@@ -9,6 +9,7 @@ struct Folio: App {
     var body: some Scene {
         WindowGroup("Folio") {
             ReaderWindow(model: model)
+                .preferredColorScheme(model.appearance.workspace.colorScheme)
                 .frame(minWidth: 910, minHeight: 500)
                 .onAppear {
                     delegate.model = model
@@ -35,6 +36,8 @@ struct Folio: App {
                     .keyboardShortcut("e").disabled(model.active?.canEdit != true || model.showingGit)
             }
             CommandGroup(after: .toolbar) {
+                Button("Focus Folder Tree", action: model.focusFolderTree)
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
                 Button(model.sidebar ? "Hide Sidebar" : "Show Sidebar") { model.sidebar.toggle() }
                     .keyboardShortcut("s", modifiers: [.command, .control])
                 Button(model.inspector ? "Hide Inspector" : "Show Inspector") { model.inspector.toggle() }
@@ -57,7 +60,7 @@ struct Folio: App {
                 Button("Reset Text Size") { model.appearance.size = 18 }.keyboardShortcut("0")
             }
         }
-        Settings { ReaderSettings(model: model) }
+        Settings { ReaderSettings(model: model).preferredColorScheme(model.appearance.workspace.colorScheme) }
     }
 }
 

@@ -3,6 +3,8 @@ import SwiftUI
 
 struct FolderSidebar: View {
     @ObservedObject var model: ReaderModel
+    @State private var keyboardFocus = false
+    @State private var cursor: FileLocation?
 
     private struct Row: Identifiable {
         let folder: ReaderModel.Folder
@@ -26,35 +28,102 @@ struct FolderSidebar: View {
                     .buttonStyle(.borderless)
                     .help("Add Folders")
             }
-            .padding(.horizontal, 12).frame(height: 33)
-            Divider()
+            .padding(.horizontal, 12).frame(height: 31)
+            WorkspaceRule()
             if model.folders.isEmpty {
                 Text("Add a folder to browse its files.")
                     .font(.callout).foregroundStyle(.secondary).padding(12)
                 Spacer()
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(rows) { item in
-                            if item.message {
-                                Text(item.title)
-                                    .font(.caption).foregroundStyle(.secondary)
-                                    .padding(.leading, 21 + CGFloat(min(item.depth, 10) * 12))
-                                    .padding(.vertical, 3)
-                            } else if item.directory {
-                                directory(item)
-                            } else {
-                                file(item)
+                let visibleRows = rows
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 1) {
+                            ForEach(visibleRows) { item in
+                                rowView(item).id(item.id)
                             }
                         }
+                        .padding(.vertical, 5)
+                        .padding(.horizontal, 6)
                     }
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 6)
+                    .background {
+                        FolderKeyTarget(request: model.folderTreeFocus, focused: $keyboardFocus) {
+                            handleKey($0, rows: visibleRows)
+                        }
+                        .frame(width: 0, height: 0)
+                    }
+                    .onChange(of: model.active?.location, initial: true) { _, location in
+                        if let location { cursor = location; proxy.scrollTo(location) }
+                    }
+                    .onChange(of: model.folderTreeFocus, initial: true) { _, request in
+                        guard request != nil else { return }
+                        cursor = visibleRows.first { $0.id == model.active?.location }?.id ?? visibleRows.first?.id
+                    }
+                    .onChange(of: cursor) { _, row in
+                        if let row, keyboardFocus { proxy.scrollTo(row) }
+                    }
+                    .accessibilityLabel("Folder Tree")
                 }
-                .accessibilityLabel("Folder Tree")
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(WorkspaceStyle.surface)
+    }
+
+    @ViewBuilder
+    private func rowView(_ item: Row) -> some View {
+        if item.message {
+            Text(item.title)
+                .font(.caption).foregroundStyle(.secondary)
+                .padding(.leading, 21 + CGFloat(min(item.depth, 10) * 12))
+                .padding(.vertical, 3)
+        } else if item.directory {
+            directory(item)
+        } else {
+            file(item)
+        }
+    }
+
+    private func handleKey(_ key: KeyEquivalent, rows: [Row]) -> Bool {
+        let items = rows.filter { !$0.message }
+        guard let first = items.first else { return false }
+        guard let index = items.firstIndex(where: { $0.id == cursor }) else {
+            cursor = first.id
+            return true
+        }
+        let item = items[index]
+        let expanded = item.directory && item.folder.expanded.contains(item.path)
+        switch key {
+        case .upArrow:
+            cursor = items[max(0, index - 1)].id
+        case .downArrow:
+            cursor = items[min(items.count - 1, index + 1)].id
+        case .rightArrow:
+            if item.directory && !expanded { toggle(item) }
+            else if expanded, index + 1 < items.count, items[index + 1].depth > item.depth {
+                cursor = items[index + 1].id
+            }
+        case .leftArrow:
+            if expanded { toggle(item) }
+            else if item.depth > 0, let parent = items[..<index].last(where: { $0.depth == item.depth - 1 }) {
+                cursor = parent.id
+            }
+        case .return, .space:
+            if item.directory { toggle(item) } else { model.open(item.id) }
+        default:
+            return false
+        }
+        return true
+    }
+
+    private func toggle(_ item: Row) {
+        cursor = item.id
+        model.toggleFolder(root: item.folder.url, path: item.path)
+    }
+
+    private func cursorBorder(_ item: Row) -> some View {
+        RoundedRectangle(cornerRadius: 4)
+            .strokeBorder(keyboardFocus && cursor == item.id ? WorkspaceStyle.focus : .clear)
+            .allowsHitTesting(false)
     }
 
     private var rows: [Row] {
@@ -81,7 +150,7 @@ struct FolderSidebar: View {
     private func directory(_ item: Row) -> some View {
         let expanded = item.folder.expanded.contains(item.path)
         return Button {
-            model.toggleFolder(root: item.folder.url, path: item.path)
+            toggle(item)
         } label: {
             row(depth: item.depth, disclosure: expanded) {
                 Image(systemName: expanded ? "folder.fill" : "folder")
@@ -91,7 +160,8 @@ struct FolderSidebar: View {
                 Text(item.title).fontWeight(item.path.isEmpty ? .semibold : .regular)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(WorkspaceButton())
+        .overlay { cursorBorder(item) }
         .accessibilityLabel(item.title)
         .accessibilityValue(expanded ? "Expanded" : "Collapsed")
         .help(item.path.isEmpty ? item.folder.url.path : item.path)
@@ -109,6 +179,7 @@ struct FolderSidebar: View {
         let location = item.id
         let selected = model.active?.location == location
         return Button {
+            cursor = item.id
             if NSEvent.modifierFlags.contains(.option) {
                 model.open(location, in: model.focusedPane.other)
             } else {
@@ -119,10 +190,9 @@ struct FolderSidebar: View {
                 FileIcon(name: item.title, kind: item.kind)
                 Text(item.title)
             }
-            .background(selected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.15) : .clear,
-                        in: RoundedRectangle(cornerRadius: 4))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(WorkspaceButton(selected: selected))
+        .overlay { cursorBorder(item) }
         .accessibilityAddTraits(selected ? .isSelected : [])
         .help(item.path)
         .contextMenu {
@@ -153,6 +223,62 @@ struct FolderSidebar: View {
         .padding(.trailing, 4)
         .frame(minHeight: 23)
         .contentShape(Rectangle())
+    }
+}
+
+private struct FolderKeyTarget: NSViewRepresentable {
+    let request: UUID?
+    @Binding var focused: Bool
+    let handle: (KeyEquivalent) -> Bool
+
+    func makeNSView(context: Context) -> KeyView { KeyView() }
+
+    func updateNSView(_ view: KeyView, context: Context) {
+        view.handle = handle
+        view.onFocus = { active in focused = active }
+        if let request, request != view.request {
+            view.request = request
+            DispatchQueue.main.async { [weak view] in
+                guard let view, view.request == request else { return }
+                view.window?.makeFirstResponder(view)
+            }
+        }
+    }
+
+    @MainActor
+    final class KeyView: NSView {
+        var request: UUID?
+        var handle: ((KeyEquivalent) -> Bool)?
+        var onFocus: ((Bool) -> Void)?
+        override var acceptsFirstResponder: Bool { true }
+
+        override func becomeFirstResponder() -> Bool {
+            onFocus?(true)
+            return true
+        }
+
+        override func resignFirstResponder() -> Bool {
+            onFocus?(false)
+            return true
+        }
+
+        override func keyDown(with event: NSEvent) {
+            if !event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
+                super.keyDown(with: event)
+                return
+            }
+            let key: KeyEquivalent? = switch event.keyCode {
+            case 123: .leftArrow
+            case 124: .rightArrow
+            case 125: .downArrow
+            case 126: .upArrow
+            case 36, 76: .return
+            case 49: .space
+            default: nil
+            }
+            if let key, handle?(key) == true { return }
+            super.keyDown(with: event)
+        }
     }
 }
 

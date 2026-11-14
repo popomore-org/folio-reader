@@ -38,6 +38,12 @@ struct GitView: View {
     @State private var fetchingPatch = false
     @State private var reload = UUID()
 
+    private var historyHeight: CGFloat {
+        guard let history, !history.commits.isEmpty else { return 105 }
+        let rows = min(history.commits.count, 7)
+        return CGFloat(31 + 25 * rows + (history.limited && rows < 7 ? 26 : 0))
+    }
+
     private var refreshKey: [UUID] { [refreshID, reload] }
     private var patchKey: PatchKey { PatchKey(selection: selected, refreshKey: refreshKey) }
 
@@ -48,115 +54,184 @@ struct GitView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Git").font(.headline)
-                    if let branch = snapshot?.branch {
-                        Label(branch, systemImage: "arrow.triangle.branch")
-                            .font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 1) {
+                ForEach(Page.allCases, id: \.self) { item in
+                    let title = item == .changes && snapshot != nil ? "Changes (\(snapshot?.total ?? 0))" : item.rawValue
+                    Button { page = item } label: {
+                        Text(title)
+                            .font(.system(size: 12, weight: page == item ? .semibold : .regular))
+                            .padding(.horizontal, 9)
+                            .frame(height: 25)
                     }
+                    .buttonStyle(WorkspaceButton(selected: page == item))
+                    .accessibilityAddTraits(page == item ? .isSelected : [])
                 }
-                Spacer()
-                Picker("Git View", selection: $page) {
-                    ForEach(Page.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                Spacer(minLength: 8)
+                if let branch = snapshot?.branch {
+                    Label(branch, systemImage: "arrow.triangle.branch")
+                        .lineLimit(1).truncationMode(.middle)
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
-                .labelsHidden().pickerStyle(.segmented).frame(width: 220)
-                Button("Refresh Git", systemImage: "arrow.clockwise") { reload = UUID() }
-                    .labelStyle(.iconOnly).help("Refresh Git")
+                Button { reload = UUID() } label: {
+                    Image(systemName: "arrow.clockwise").frame(width: 25, height: 25)
+                }
+                .buttonStyle(WorkspaceButton())
+                .accessibilityLabel("Refresh Git")
+                .help("Refresh Git")
             }
-            .padding(12)
-            Divider()
+            .padding(.horizontal, 7)
+            .frame(height: 34)
+            WorkspaceRule()
             if loading {
                 ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let repositoryError {
                 empty("Git could not be read", repositoryError)
             } else if let snapshot {
-                HSplitView {
-                    gitList(snapshot)
-                        .frame(minWidth: 174, idealWidth: 246, maxWidth: 330, maxHeight: .infinity)
-                    patchPane
-                        .frame(minWidth: 285, maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 0) {
+                    if page == .history {
+                        ViewThatFits(in: .horizontal) {
+                            historyTable(showAuthor: true).frame(minWidth: 640)
+                            historyTable(showAuthor: false)
+                        }
+                        .frame(height: historyHeight)
+                        WorkspaceRule()
+                        patchPane
+                    } else {
+                        HSplitView {
+                            changeList(snapshot)
+                                .frame(minWidth: 180, idealWidth: 250, maxWidth: 330, maxHeight: .infinity)
+                            patchPane
+                                .frame(minWidth: 285, maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    }
                 }
             } else {
                 empty("No Git repository", "The selected file or folder is outside a Git working tree.")
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(WorkspaceStyle.surface)
         .task(id: refreshKey) { await loadRepository() }
         .task(id: patchKey) { await loadPatch(selected) }
         .onChange(of: page) { _, page in chooseDefault(page) }
     }
 
     @ViewBuilder
-    private func gitList(_ snapshot: GitChanges) -> some View {
-        if page == .changes {
-            if snapshot.changes.isEmpty {
-                empty("Working tree clean", "There are no changes in the selected folder.")
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 3) {
-                        Text("\(snapshot.total) changed \(snapshot.total == 1 ? "file" : "files")")
-                            .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                            .padding(6)
-                        ForEach(snapshot.changes) { change in
-                            let selection = Selection(path: change.path)
-                            choice(selection, change.path,
-                                   [change.staged.map { "Staged · \($0)" }, change.unstaged].compactMap { $0 }.joined(separator: "  ·  "))
+    private func changeList(_ snapshot: GitChanges) -> some View {
+        if snapshot.changes.isEmpty {
+            empty("Working tree clean", "There are no changes in the selected folder.")
+        } else {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(snapshot.changes) { change in
+                        let target = Selection(path: change.path)
+                        Button { selected = target } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: statusIcon(change.unstaged ?? change.staged))
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(statusColor(change.unstaged ?? change.staged))
+                                    .frame(width: 14)
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(change.path).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+                                    Text([change.staged.map { "Staged · \($0)" }, change.unstaged].compactMap { $0 }.joined(separator: "  ·  "))
+                                        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
+                            .padding(.horizontal, 7).padding(.vertical, 5)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
-                        if snapshot.total > snapshot.changes.count {
-                            Text("Showing the first \(snapshot.changes.count) changes.")
-                                .font(.caption).foregroundStyle(.secondary).padding(6)
-                        }
-                    }.padding(7)
-                }
+                        .buttonStyle(WorkspaceButton(selected: selected == target))
+                        .accessibilityAddTraits(selected == target ? .isSelected : [])
+                        .help(change.path)
+                    }
+                    if snapshot.total > snapshot.changes.count {
+                        Text("Showing the first \(snapshot.changes.count) changes.")
+                            .font(.caption).foregroundStyle(.secondary).padding(6)
+                    }
+                }.padding(6)
             }
-        } else if location.path.isEmpty {
+        }
+    }
+
+    @ViewBuilder
+    private func historyTable(showAuthor: Bool) -> some View {
+        if location.path.isEmpty {
             empty("Select a file", "Open a file from the directory to view its commit history.")
         } else if let historyError {
             empty("History could not be read", historyError)
         } else if let history, !history.commits.isEmpty {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 3) {
-                    Text(location.name).font(.caption.weight(.semibold)).padding(6)
-                    ForEach(history.commits) { commit in
-                        choice(Selection(path: location.path, commit: commit.id),
-                               commit.summary,
-                               "\(commit.id.prefix(8)) · \(commit.author) · \(commit.date.formatted(date: .abbreviated, time: .omitted))")
-                    }
-                    if history.limited {
-                        Text("Showing recent history.").font(.caption).foregroundStyle(.secondary).padding(6)
-                    }
-                }.padding(7)
+            VStack(spacing: 0) {
+                historyRow(summary: "Summary", author: "Author", date: "Date", sha: "Commit", showAuthor: showAuthor)
+                    .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
+                    .padding(.horizontal, 4)
+                WorkspaceRule()
+                ScrollView {
+                    LazyVStack(spacing: 1) {
+                        ForEach(history.commits) { commit in
+                            let target = Selection(path: location.path, commit: commit.id)
+                            Button { selected = target } label: {
+                                historyRow(summary: commit.summary, author: commit.author,
+                                           date: commit.date.formatted(date: .abbreviated, time: .omitted),
+                                           sha: String(commit.id.prefix(8)), showAuthor: showAuthor)
+                            }
+                            .buttonStyle(WorkspaceButton(selected: selected == target))
+                            .accessibilityAddTraits(selected == target ? .isSelected : [])
+                            .help("\(commit.summary) · \(commit.author)")
+                        }
+                        if history.limited {
+                            Text("Showing recent history.").font(.caption).foregroundStyle(.secondary).padding(6)
+                        }
+                    }.padding(.horizontal, 4).padding(.vertical, 3)
+                }
             }
         } else {
             empty("No commits at this path", "File History shows commits affecting the selected file.")
         }
     }
 
-    private func choice(_ selection: Selection, _ title: String, _ detail: String) -> some View {
-        Button { selected = selection } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).lineLimit(2).truncationMode(.middle)
-                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-            }
-            .padding(7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .background(selected == selection ? Color.accentColor.opacity(0.13) : .clear,
-                        in: RoundedRectangle(cornerRadius: 5))
+    private func historyRow(summary: String, author: String, date: String, sha: String, showAuthor: Bool) -> some View {
+        HStack(spacing: 9) {
+            Text(summary).frame(maxWidth: .infinity, alignment: .leading)
+            if showAuthor { Text(author).foregroundStyle(.secondary).frame(width: 116, alignment: .leading) }
+            Text(date).foregroundStyle(.secondary).frame(width: 86, alignment: .leading)
+            Text(sha).monospaced().foregroundStyle(.secondary).frame(width: 67, alignment: .leading)
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected == selection ? .isSelected : [])
-        .help(title)
+        .font(.system(size: 12))
+        .lineLimit(1)
+        .padding(.horizontal, 9)
+        .frame(height: 24)
+        .contentShape(Rectangle())
+    }
+
+    private func statusIcon(_ status: String?) -> String {
+        switch status {
+        case "Added", "Untracked": "plus.square"
+        case "Deleted": "minus.square"
+        case "Conflict": "exclamationmark.square"
+        default: "square.and.pencil"
+        }
+    }
+
+    private func statusColor(_ status: String?) -> Color {
+        switch status {
+        case "Added", "Untracked": .green
+        case "Deleted": .red
+        case "Conflict": .orange
+        default: WorkspaceStyle.focus
+        }
     }
 
     @ViewBuilder
     private var patchPane: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let selected {
-                Text(selected.path).font(.callout.weight(.semibold)).lineLimit(1).truncationMode(.middle)
-                    .padding(11).frame(maxWidth: .infinity, alignment: .leading)
-                Divider()
+                Label(selected.path, systemImage: "doc.text")
+                    .font(.system(size: 12, weight: .medium)).lineLimit(1).truncationMode(.middle)
+                    .padding(.horizontal, 10).frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+                    .background(WorkspaceStyle.surface)
+                WorkspaceRule()
                 if fetchingPatch {
                     ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let patchError {

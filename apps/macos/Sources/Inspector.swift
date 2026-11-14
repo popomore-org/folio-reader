@@ -7,7 +7,7 @@ struct Inspector: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Outline").font(.callout.weight(.semibold))
                 .padding(.horizontal, 12).frame(height: 33)
-            Divider()
+            WorkspaceRule()
             if let tab {
                 TabOutline(tab: tab)
             } else {
@@ -15,7 +15,7 @@ struct Inspector: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(WorkspaceStyle.surface)
     }
 }
 

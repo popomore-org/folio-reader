@@ -151,6 +151,7 @@ final class ReaderModel: ObservableObject {
     @Published var showingGit = false
     @Published var appearance = Appearance() { didSet { appearance.persist() } }
     @Published private(set) var gitRefresh = UUID()
+    @Published private(set) var folderTreeFocus: UUID?
 
     private var observation: AnyCancellable?
     private let defaults: UserDefaults
@@ -170,10 +171,33 @@ final class ReaderModel: ObservableObject {
         active?.location ?? selectedRoot.map { FileLocation(root: $0, path: "") }
     }
 
+    func focusFolderTree() {
+        sidebar = true
+        folderTreeFocus = UUID()
+    }
+
+    private func updateActive() {
+        if let location = active?.location {
+            selectedRoot = location.root
+            reveal(location)
+        }
+        observation = active?.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
+    }
+
+    private func reveal(_ location: FileLocation) {
+        guard let folder = folders.first(where: { $0.url == location.root }) else { return }
+        var parent = ""
+        for component in location.path.split(separator: "/").dropLast() {
+            if !folder.expanded.contains(parent) { expand(root: location.root, path: parent) }
+            parent += parent.isEmpty ? String(component) : "/" + component
+        }
+        if !folder.expanded.contains(parent) { expand(root: location.root, path: parent) }
+    }
+
     func focus(_ pane: Pane) {
         guard focusedPane != pane, groups[pane] != nil else { return }
         focusedPane = pane
-        observeActive()
+        updateActive()
     }
 
     func activate(_ tab: ReaderTab, in pane: Pane) {
@@ -183,9 +207,8 @@ final class ReaderModel: ObservableObject {
             groups[pane] = group
         }
         focusedPane = pane
-        selectedRoot = folders.contains { $0.url == tab.location.root } ? tab.location.root : selectedRoot
         showingGit = false
-        observeActive()
+        updateActive()
     }
 
     func cycle(_ offset: Int) {
@@ -235,7 +258,7 @@ final class ReaderModel: ObservableObject {
         guard var group = groups[pane], tab.leaveDraft() else { return }
         group.remove(tab)
         groups[pane] = group
-        observeActive()
+        updateActive()
     }
 
     func closeActive() {
@@ -257,7 +280,7 @@ final class ReaderModel: ObservableObject {
             focusedPane = .right
             sidebar = true
         }
-        observeActive()
+        updateActive()
     }
 
     func protectAllDrafts() -> Bool {
@@ -407,9 +430,5 @@ final class ReaderModel: ObservableObject {
             folders[index].entries.removeValue(forKey: path)
             folders[index].failures[path] = error.localizedDescription
         }
-    }
-
-    private func observeActive() {
-        observation = active?.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
     }
 }

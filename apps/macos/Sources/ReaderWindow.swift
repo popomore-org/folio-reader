@@ -28,20 +28,15 @@ struct ReaderWindow: View {
                         .frame(minWidth: 150, idealWidth: 185, maxWidth: 230)
                 }
             }
-            Divider()
+            WorkspaceRule()
             StatusBar(model: model)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .toolbarBackground(Color(nsColor: .windowBackgroundColor), for: .windowToolbar)
+        .background(WorkspaceStyle.surface)
+        .toolbarBackground(WorkspaceStyle.surface, for: .windowToolbar)
         .toolbarBackground(.visible, for: .windowToolbar)
         .navigationTitle(model.showingGit ? "Git" : model.active?.title ?? "Folio")
-        .navigationSubtitle(model.active?.location.displayPath ?? "")
+        .navigationSubtitle(model.showingGit ? model.gitLocation?.displayPath ?? "" : "")
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button { model.sidebar.toggle() } label: {
-                    Label("Sidebar", systemImage: "sidebar.left")
-                }.help("Toggle Sidebar")
-            }
             ToolbarItemGroup(placement: .primaryAction) {
                 if let active = model.active, !model.showingGit {
                     if active.editing {
@@ -56,10 +51,6 @@ struct ReaderWindow: View {
                             .help("Find in Document (⌘F)")
                     }
                 }
-                Button(model.split ? "Merge Panes" : "Split Right",
-                       systemImage: model.split ? "rectangle" : "rectangle.split.2x1",
-                       action: model.toggleSplit)
-                    .help(model.split ? "Merge Panes" : "Split Right")
                 Button("Outline", systemImage: "sidebar.right") { model.inspector.toggle() }
                     .help("Toggle Outline")
                     .disabled(model.active?.document?.preview == nil || model.showingGit)
@@ -85,25 +76,16 @@ struct ReaderPane: View {
     var body: some View {
         let group = model.groups[pane] ?? ReaderModel.Group()
         VStack(spacing: 0) {
-            if !group.tabs.isEmpty {
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 3) {
-                            ForEach(group.tabs) { tab in
-                                TabButton(model: model, pane: pane, tab: tab, selected: group.selected == tab.id)
-                                    .id(tab.id)
-                            }
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                    }
-                    .scrollIndicators(.hidden)
-                    .onChange(of: group.selected, initial: true) { _, selected in
-                        if let selected { proxy.scrollTo(selected) }
-                    }
-                }
-                .accessibilityLabel("\(pane.label) Tabs")
-                Divider()
+            tabBar(group)
+            if let active = group.active {
+                Label(active.location.displayPath, systemImage: "folder")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle)
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, minHeight: 25, alignment: .leading)
+                    .background(WorkspaceStyle.surface)
+                WorkspaceRule()
             }
             if let tab = group.active {
                 TabDocument(tab: tab, appearance: model.appearance, follow: { model.follow($0, from: tab) })
@@ -123,15 +105,59 @@ struct ReaderPane: View {
             PaneFocus { model.focus(pane) }
         }
         .background(Color(nsColor: .textBackgroundColor))
-        .overlay(alignment: .top) {
-            if model.split, model.focusedPane == pane {
-                Rectangle().fill(Color.accentColor).frame(height: 1)
-                    .accessibilityHidden(true).allowsHitTesting(false)
-            }
-        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(pane.label) Reader")
     }
+
+    private func tabBar(_ group: ReaderModel.Group) -> some View {
+        HStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 0) {
+                        ForEach(group.tabs) { tab in
+                            TabButton(model: model, pane: pane, tab: tab, selected: group.selected == tab.id,
+                                      focused: model.focusedPane == pane)
+                                .id(tab.id)
+                            WorkspaceRule(vertical: true)
+                                .frame(height: 30)
+                        }
+                    }
+                }
+                .scrollIndicators(.hidden)
+                .onChange(of: group.selected, initial: true) { _, selected in
+                    if let selected { proxy.scrollTo(selected) }
+                }
+            }
+            .accessibilityLabel("\(pane.label) Tabs")
+            HStack(spacing: 2) {
+                Button {
+                    model.focus(pane)
+                    model.choose()
+                } label: {
+                    Image(systemName: "plus").frame(width: 25, height: 25)
+                }
+                .buttonStyle(WorkspaceButton())
+                .accessibilityLabel("Open File in \(pane.label) Pane")
+                .help("Open File")
+                if !model.split || pane == .right {
+                    Button(action: model.toggleSplit) {
+                        Image(systemName: model.split ? "rectangle" : "rectangle.split.2x1")
+                            .frame(width: 25, height: 25)
+                    }
+                    .buttonStyle(WorkspaceButton())
+                    .accessibilityLabel(model.split ? "Merge Panes" : "Split Right")
+                    .help(model.split ? "Merge Panes" : "Split Right")
+                }
+            }
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+        }
+        .frame(height: 31)
+        .background(WorkspaceStyle.surface)
+        .overlay(alignment: .bottom) { WorkspaceRule() }
+    }
+
 }
 
 private struct TabButton: View {
@@ -139,6 +165,7 @@ private struct TabButton: View {
     let pane: Pane
     @ObservedObject var tab: ReaderTab
     let selected: Bool
+    let focused: Bool
 
     var body: some View {
         HStack(spacing: 2) {
@@ -164,10 +191,17 @@ private struct TabButton: View {
             .foregroundStyle(.secondary)
             .accessibilityLabel("Close \(tab.title)")
         }
-        .font(.callout)
-        .frame(maxWidth: 220)
-        .background(selected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.13) : .clear,
-                    in: RoundedRectangle(cornerRadius: 5))
+        .font(.system(size: 12, weight: selected ? .medium : .regular))
+        .foregroundStyle(selected ? .primary : .secondary)
+        .frame(maxWidth: 218)
+        .frame(height: 30)
+        .background(selected ? (focused ? WorkspaceStyle.selection : WorkspaceStyle.hover) : .clear)
+        .overlay(alignment: .bottom) {
+            if selected && focused {
+                Rectangle().fill(WorkspaceStyle.focus).frame(height: 2)
+                    .accessibilityHidden(true).allowsHitTesting(false)
+            }
+        }
         .help(tab.location.displayPath)
         .contextMenu {
             Button("Move to \(pane.other.label) Pane") { model.move(tab, from: pane, to: pane.other) }
@@ -201,7 +235,7 @@ private struct TabDocument: View {
                     Button("Done") { tab.finding = false }
                 }
                 .padding(8)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .background(WorkspaceStyle.surface)
                 .onExitCommand { tab.finding = false }
                 Divider()
             }
@@ -268,33 +302,41 @@ struct StatusBar: View {
     @ObservedObject var model: ReaderModel
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 9) {
+            Button {
+                model.sidebar.toggle()
+            } label: {
+                Image(systemName: "sidebar.left").frame(width: 25, height: 23)
+            }
+            .buttonStyle(WorkspaceButton(selected: model.sidebar))
+            .accessibilityLabel(model.sidebar ? "Hide Folder Tree" : "Show Folder Tree")
+            .help("Toggle Folder Tree")
             Button {
                 model.showingGit.toggle()
             } label: {
                 Label(model.showingGit ? "Back to Reading" : "Git", systemImage: "arrow.triangle.branch")
+                    .padding(.horizontal, 6).frame(height: 23)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(WorkspaceButton(selected: model.showingGit))
             .disabled(model.gitLocation == nil)
             .help(model.showingGit ? "Back to Reading" : "Open Git View")
-            if let tab = model.active {
-                Text(tab.location.displayPath).lineLimit(1).truncationMode(.middle)
-                Spacer(minLength: 6)
+            Spacer(minLength: 6)
+            if let tab = model.active, !model.showingGit {
                 Text(state(tab))
                 if let document = tab.document {
                     Text(document.kind.label)
                     Text(ByteCountFormatter.string(fromByteCount: document.bytes, countStyle: .file))
                 }
                 if model.split { Text(model.focusedPane.label + " Pane") }
-            } else {
-                Spacer()
+            } else if !model.showingGit {
                 Text("\(model.folders.count) \(model.folders.count == 1 ? "folder" : "folders")")
             }
         }
-        .font(.caption)
+        .font(.system(size: 11))
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
-        .frame(height: 28)
+        .padding(.horizontal, 7)
+        .frame(height: 26)
+        .background(WorkspaceStyle.surface)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Status Bar")
     }

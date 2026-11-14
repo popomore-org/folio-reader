@@ -13,6 +13,17 @@
 
 界面按 macOS 侧栏、主阅读区和大纲分层。侧栏、标题栏与状态栏复用系统窗口底色，文件类型以单色图形区分。文件名和相对位置显示在标题栏，打开目录后从选文件开始。文档加载、空目录、无法访问、解码失败、外部版本冲突分别反馈。正文主题与系统窗口外观独立，浅色与暖纸服务日间阅读，深色用于低环境亮度。局部控件沿用原生图标并带文字辅助标签。
 
+## 本机 Zed 界面参考
+
+2026-11-15 在本机 Zed 1.28.1 查看 Git 工作区。窗口顶部有紧凑的路径和标签行，底部一条窄状态栏承载面板入口。Git 的变更列表与提交时间线使用相近的背景和细边界，变更色集中于增删数量、状态图标和提交关系。以下将本机观察和官方文档与 Folio 的实现对照。
+
+| 场景 | Zed 参考 | Folio 的做法 |
+| --- | --- | --- |
+| 找到当前文件 | Project Panel 切换文件时自动定位对应条目，目录展开可用方向键。[Zed Project Panel](https://zed.dev/docs/project-panel) | 在左右栏切换标签时展开对应父目录并滚到文件行，⇧⌘E 将键盘焦点移到目录树，方向键用于移动和展开，Return 打开文件。 |
+| 对照两份文件 | 顶部标签和面板边界使活动区域容易辨认，分栏操作靠近标签。[Zed Splitting Panes](https://zed.dev/features#splitting-panes) | 每栏各自显示紧凑的标签，活动栏用轻量标记。保留阅读区的主题、页宽和行距。 |
+| 浏览 Git | 底栏打开 Git，变更、历史和详情共享导航位置。提交行可以同时呈现摘要、作者、时间和短 SHA。[Zed Git](https://zed.dev/docs/git) | 用一行底栏作为入口，独立视图保留足够的差异宽度。提交历史使用摘要、作者、日期和短 SHA 的列布局，下方展示补丁。窄窗口缩减列宽需求。 |
+| 视觉层级 | 导航、标签和底栏使用相近背景，以细分隔线区分区域。强调色集中于选中状态和 Git 增删。 | 统一导航表面，只在当前文件、活动栏和差异状态使用强调色。正文使用阅读主题的独立色板。设置里可以将深蓝灰工作区与暖纸正文组合。 |
+
 ## 文件图标与两栏
 
 VS Code 的文件图标主题将文件名、扩展名和语言 ID 映射到图标，编辑器分栏各自维护标签。Material Icon Theme 有 MIT 许可、文件名和扩展名映射及灰度选项；引入整套主题会增加素材和更新维护。本版沿用其匹配顺序的思路，按典型文件名、扩展名和预览类别映射到系统 SF Symbols。图标使用同一色调，选中状态通过行背景区分。[VS Code 界面](https://code.visualstudio.com/docs/editing/getting-started/userinterface) · [File Icon Theme](https://code.visualstudio.com/api/extension-guides/file-icon-theme) · [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme)
