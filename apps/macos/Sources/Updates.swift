@@ -26,7 +26,9 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     @Published private(set) var status = "Check for a new version of Folio."
     @Published private(set) var automaticChecks = false
     @AppStorage("folioAutomaticallyDownload") var automaticDownloads = false
-    @AppStorage("folioAutomaticallyInstall") var automaticInstalls = false
+    @AppStorage("folioAutomaticallyInstall") var automaticInstalls = false {
+        didSet { restartAfter = nil }
+    }
 
     let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     private let feed = (Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String).flatMap { URL(string: $0) }
@@ -47,8 +49,10 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     private var retryTermination: (() -> Void)?
     private var postponeRelaunch: (() -> Void)?
     private var manualCheck = false
+    @Published private var installationProgress: Double?
     private var presentingConsent = false
     private var deferredOffer: Offer?
+    private var restartAfter: ContinuousClock.Instant?
     private static let consentKey = "folioUpdateConsentRecorded"
     private static let maximumArchiveSize = 64 * 1024 * 1024
 
@@ -66,7 +70,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     var isWorking: Bool { [.checking, .downloading, .installing].contains(phase) }
     var lastCheckFailed: Bool { phase == .failed }
     var downloadProgress: Double? {
-        guard let transfer, let offer else { return nil }
+        guard let transfer, let offer else { return installationProgress }
         return min(1, Double(transfer.countOfBytesReceived) / Double(offer.length))
     }
 
@@ -176,6 +180,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
 
     func deferInstallation() {
         deferredOffer = offer
+        restartAfter = nil
         if let offer { set(.downloaded, "Folio \(offer.version) is ready to install.") }
     }
 
@@ -202,8 +207,19 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
             retryTermination = nil
             set(.installing, "Restarting to finish the update…")
             retry()
-        } else if automaticInstalls && deferredOffer != offer && [.downloaded, .waiting].contains(phase) {
-            install()
+        } else if authorized == nil, automaticInstalls, deferredOffer != offer, canInstall, !lastCheckFailed {
+            guard canRestart else {
+                restartAfter = nil
+                if phase != .waiting { set(.waiting, "Folio will wait for your work before restarting.") }
+                return
+            }
+            let now = ContinuousClock.now
+            if let restartAfter {
+                if now >= restartAfter { install() }
+            } else {
+                restartAfter = now.advanced(by: .seconds(10))
+                set(.downloaded, "Folio will restart in 10 seconds to install the update.")
+            }
         }
     }
 
@@ -299,22 +315,19 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     }
 
     func updater(_ updater: SPUUpdater, willDownloadUpdate item: SUAppcastItem, with request: NSMutableURLRequest) {
-        guard let url = item.fileURL, var cacheURL = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let archive, let authorized, offer == authorized else { return }
-        // Sparkle owns extraction, bundle validation and installation. Hand it the staged
-        // bytes through its public request hook without another network request.
-        cacheURL.queryItems = [URLQueryItem(name: "folio-staged-update", value: UUID().uuidString)]
-        guard let localURL = cacheURL.url, let response = HTTPURLResponse(
-            url: localURL, statusCode: 200, httpVersion: "HTTP/1.1",
+        guard let url = item.fileURL, let archive, let authorized, offer == authorized else { return }
+        // Sparkle owns extraction, validation and installation. It can use the verified
+        // bytes, or fetch the same signed asset again if CFNetwork has evicted the cache.
+        guard let response = HTTPURLResponse(
+            url: url, statusCode: 200, httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/zip", "Content-Length": String(archive.count),
                            "Content-Disposition": "attachment; filename=Folio.zip", "Cache-Control": "max-age=600"]
         ) else { return }
-        request.url = localURL
-        request.cachePolicy = .returnCacheDataDontLoad
+        request.cachePolicy = .returnCacheDataElseLoad
         let cacheRequest = request as URLRequest
         let cache = URLCache.shared
         if previousCacheCapacity == nil { previousCacheCapacity = cache.memoryCapacity }
-        cache.memoryCapacity = max(cache.memoryCapacity, archive.count * 6)
+        cache.memoryCapacity = max(cache.memoryCapacity, Self.maximumArchiveSize * 6)
         cache.storeCachedResponse(CachedURLResponse(response: response, data: archive, storagePolicy: .allowedInMemoryOnly), for: cacheRequest)
         cachedRequest = cacheRequest
     }
@@ -339,7 +352,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     func showDownloadDidReceiveExpectedContentLength(_ expectedContentLength: UInt64) {}
     func showDownloadDidReceiveData(ofLength length: UInt64) {}
     func showDownloadDidStartExtractingUpdate() { set(.installing, "Verifying and preparing the update…") }
-    func showExtractionReceivedProgress(_ progress: Double) {}
+    func showExtractionReceivedProgress(_ progress: Double) { installationProgress = progress }
 
     func showReady(toInstallAndRelaunch reply: @escaping (SPUUserUpdateChoice) -> Void) {
         guard authorized != nil, canRestart else {
@@ -394,6 +407,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
         if phase == .installing, error == nil, authorized != nil, archive != nil {
             set(.downloaded, "The update was deferred. You can try restarting again.")
         }
+        installationProgress = nil
         checkCancellation = nil
         authorized = nil
         retryTermination = nil
