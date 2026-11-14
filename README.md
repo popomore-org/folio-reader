@@ -43,6 +43,30 @@ scripts/check-consumer
 
 本地预览使用独立的 `org.popomore.folio.preview` 应用标识。正式构建提供 Sparkle 自动更新，签名、公证和稳定渠道配置见 [macOS 自动更新](docs/macos-updates.md)。最低系统版本为 macOS 14，目前真机记录覆盖 macOS 27.0.1。
 
+## 命令行
+
+Folio 应用包内含 Apple Silicon 版 `folio` 命令，依赖 macOS 14 及以上，无需额外运行时。先将应用放在长期使用的位置，然后运行一次安装命令。
+
+```sh
+"/Applications/Folio.app/Contents/Helpers/folio" install
+# 源码构建使用 ".build/Folio Preview.app/Contents/Helpers/folio" install
+```
+
+安装会将 `~/.local/bin/folio` 链接到应用内的命令。同一位置重复安装可安全执行，已有其他同名命令时会报错。如果找不到命令，把 `~/.local/bin` 加到 `PATH`。应用原地升级时会一并更新命令。卸载命令时移除该链接即可，工作区数据仍保留。
+
+```sh
+folio .                              # 打开当前目录
+folio "项目笔记.md" ./资料             # 打开文件和目录
+folio preview "项目笔记.md"            # 浮动小窗
+folio preview                        # 从 Folio 的文件选择器挑选文件
+folio --help
+folio --version
+```
+
+`folio` 等同于 `folio open .`。相对路径以终端当前目录为准。文件名以 `-` 开头时，可用 `folio open -- -draft.md`。选用指定应用时，优先级为 `--app`、`FOLIO_APP`、命令所属的应用包、系统登记的正式版和预览版。
+
+打开成功时命令静默退出。退出码 `0` 表示 macOS 已接受打开请求，文件渲染错误显示在应用内。退出码 `1` 表示路径、应用或系统调用出错，`2` 表示参数错误。诊断写入 stderr。
+
 ## 从其他应用快速预览
 
 Raycast 的 **Script Commands** 加入本仓的 `integrations/raycast` 目录，然后搜索 **Preview in Folio**。可以粘贴绝对文件路径，留空则打开系统文件选择器。首次使用前先打开一次 Folio，让 macOS 注册链接。

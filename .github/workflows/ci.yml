@@ -31,7 +31,16 @@ jobs:
           xcodebuild -version
           rustup show active-toolchain
           node --version
-          scripts/build-macos
+          app="$(scripts/build-macos)"
+          cli="$app/Contents/Helpers/folio"
+          "$cli" --help
+          test "$("$cli" --version)" = "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")"
+          status=0
+          "$cli" --unknown || status=$?
+          test "$status" -eq 2
+          status=0
+          "$cli" "$app/no-such-file" || status=$?
+          test "$status" -eq 1
           cargo test --locked --workspace
           npm test --prefix renderer
           scripts/check-consumer

@@ -43,7 +43,7 @@ mkdir -p "$build"
 stage="$(mktemp -d "$build/stage.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT
 staged="$stage/$name.app"
-mkdir -p "$staged/Contents/"{MacOS,Resources,Frameworks} "$stage/app.iconset"
+mkdir -p "$staged/Contents/"{MacOS,Resources,Frameworks,Helpers} "$stage/app.iconset"
 
 rustup run "$rust_version" cargo build --locked --release --target "$target" -p folio-bridge >&2
 npm ci --prefix renderer --ignore-scripts --no-audit --no-fund >&2
@@ -87,6 +87,8 @@ xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-erro
   apps/macos/Sources/*.swift "$CARGO_TARGET_DIR/$target/release/libfolio_bridge.a" \
   -lz -liconv -framework Security -framework SystemConfiguration -framework CoreFoundation \
   -o "$staged/Contents/MacOS/Folio"
+xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-errors -O \
+  apps/macos/CLI/main.swift -o "$staged/Contents/Helpers/folio"
 sign=(--force --sign "$identity")
 if [[ "$mode" == release ]]; then
   sign+=(--timestamp --options runtime)
@@ -101,6 +103,7 @@ codesign "${sign[@]}" "$version_root/Updater.app"
 codesign "${sign[@]}" "$version_root/XPCServices/Downloader.xpc"
 codesign "${sign[@]}" "$version_root/XPCServices/Installer.xpc"
 codesign "${sign[@]}" "$framework"
+codesign "${sign[@]}" "$staged/Contents/Helpers/folio"
 codesign "${sign[@]}" "$staged"
 codesign --verify --deep --strict "$staged"
 rm -rf "$bundle"
