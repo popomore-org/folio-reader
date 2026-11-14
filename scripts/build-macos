@@ -10,6 +10,7 @@ esac
 
 export MACOSX_DEPLOYMENT_TARGET=14.0
 export CARGO_TARGET_DIR="$PWD/target"
+rust_version="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
 build="$PWD/.build"
 bundle="$build/Folio Preview.app"
 mkdir -p "$build"
@@ -19,7 +20,7 @@ trap 'rm -rf "$stage"' EXIT
 staged="$stage/Folio Preview.app"
 mkdir -p "$staged/Contents/"{MacOS,Resources} "$stage/app.iconset"
 
-cargo build --locked --release --target "$target" -p folio-bridge
+rustup run "$rust_version" cargo build --locked --release --target "$target" -p folio-bridge
 npm ci --prefix renderer --ignore-scripts --no-audit --no-fund
 npm run --prefix renderer build -- "$staged/Contents/Resources"
 cp apps/macos/Resources/* "$staged/Contents/Resources/"

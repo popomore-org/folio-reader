@@ -11,6 +11,8 @@ cat > "$consumer/Cargo.toml" <<TOML
 name = "folio-external-consumer"
 version = "0.1.0"
 edition = "2024"
+[profile.dev]
+strip = "none"
 [features]
 default = ["folio-core/git"]
 [dependencies]
@@ -35,5 +37,5 @@ RS
 mkdir "$consumer/fixture"
 printf '# Notes\n' > "$consumer/fixture/note.md"
 cd "$consumer"
-cargo +"$version" run --quiet
-cargo +"$version" run --quiet --no-default-features
+rustup run "$version" cargo run --quiet
+rustup run "$version" cargo run --quiet --no-default-features

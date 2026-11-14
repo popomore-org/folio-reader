@@ -34,3 +34,8 @@
 - 首轮远端 Rust 任务通过。Xcode 26.6 的 Swift 编译器在 ReaderWindow IR 生成崩溃。CI 改用 GitHub xcode-27 runner 上的 Xcode 27.2，与本地已验证工具链一致。
 - 保留 macOS 文件拥有者、ACL 和扩展属性，真机测试覆盖扩展属性；改用公开 C 头声明桥接 ABI。
 - 修复 Git 检查器按钮的原生点击入口。真机核对工作树补丁与提交补丁内容，验证退出编辑提示和丢弃仅影响草稿。
+
+### Step 4 — 2026-11-15 — 解决 Xcode 27 上的 Rust 编译加载故障
+
+- 第二轮远端构建进入 Xcode 27.2 后，Rust 1.97.0 无法加载 zerofrom 过程宏。使用官方 Cargo 和空构建目录在本机复现，动态加载器确认 `mis-aligned LINKEDIT string pool`。
+- 明确取消 Rust 过程宏的自动 strip，官方 Cargo 的冷构建通过。打包与外部消费脚本显式调用已固定的官方 Cargo。对应上游 rust-lang/rust#157750。
