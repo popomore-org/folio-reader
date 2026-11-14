@@ -54,7 +54,8 @@ fn save_conflicts_with_a_locked_file() -> Result<(), Error> {
         Err(Error::Conflict)
     ));
     assert_eq!(fs::read_to_string(&path)?, "# Original");
-    drop(writer);
+    // A concurrently spawned child can briefly inherit the descriptor on Unix.
+    writer.unlock()?;
     workspace.save("note.md", &revision, "# Draft")?;
     assert_eq!(fs::read_to_string(path)?, "# Draft");
     Ok(())
