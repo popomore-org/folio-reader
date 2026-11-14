@@ -1,11 +1,5 @@
 import SwiftUI
 
-enum Theme: String, CaseIterable, Identifiable {
-    case system, light, paper, dark
-    var id: String { rawValue }
-    var label: String { rawValue.capitalized }
-}
-
 enum WorkspaceAppearance: String, CaseIterable, Identifiable {
     case system, light, dark
 
@@ -21,7 +15,6 @@ enum WorkspaceAppearance: String, CaseIterable, Identifiable {
 
 struct Appearance: Equatable {
     var workspace: WorkspaceAppearance = .system
-    var theme: Theme = .system
     var size = 18.0
     var width = 700.0
     var serif = true
@@ -29,7 +22,6 @@ struct Appearance: Equatable {
     init() {
         let defaults = UserDefaults.standard
         workspace = WorkspaceAppearance(rawValue: defaults.string(forKey: "workspaceAppearance") ?? "") ?? .system
-        theme = Theme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
         size = min(30, max(13, defaults.object(forKey: "textSize") as? Double ?? 18))
         width = defaults.object(forKey: "readerWidth") as? Double ?? 700
         serif = defaults.object(forKey: "serif") as? Bool ?? true
@@ -38,7 +30,6 @@ struct Appearance: Equatable {
     func persist() {
         let defaults = UserDefaults.standard
         defaults.set(workspace.rawValue, forKey: "workspaceAppearance")
-        defaults.set(theme.rawValue, forKey: "theme")
         defaults.set(size, forKey: "textSize")
         defaults.set(width, forKey: "readerWidth")
         defaults.set(serif, forKey: "serif")
@@ -65,10 +56,7 @@ struct ReaderSettings: View {
                     ForEach(WorkspaceAppearance.allCases) { mode in Text(mode.rawValue.capitalized).tag(mode) }
                 }
             }
-            Section("Reading Appearance") {
-                Picker("Theme", selection: $model.appearance.theme) {
-                    ForEach(Theme.allCases) { theme in Text(theme.label).tag(theme) }
-                }
+            Section("Reading") {
                 Picker("Typeface", selection: $model.appearance.serif) {
                     Text("Serif").tag(true)
                     Text("Sans Serif").tag(false)

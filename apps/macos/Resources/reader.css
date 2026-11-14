@@ -1,11 +1,10 @@
 :root {
   color-scheme: light;
-  --page: #fbfaf8;
-  --ink: #292422;
-  --muted: #675d58;
-  --line: #dbd3ce;
-  --inset: #f2eeea;
-  --link: #8d402e;
+  --ink: CanvasText;
+  --muted: color-mix(in srgb, CanvasText 72%, Canvas);
+  --line: #d9dee6;
+  --inset: #f3f5f8;
+  --link: #375b91;
   --text-size: 18px;
   --reading-width: 700px;
   --body-font: "New York", "Songti SC", Georgia, serif;
@@ -15,40 +14,16 @@
 
 :root[data-serif="false"] { --body-font: var(--ui-font); }
 
-:root[data-theme="paper"] {
-  --page: #f6edde;
-  --ink: #352923;
-  --muted: #665649;
-  --line: #d9cbbb;
-  --inset: #ede1d0;
-  --link: #86402a;
-}
-
-:root[data-theme="dark"] {
+:root[data-color-scheme="dark"] {
   color-scheme: dark;
-  --page: #201c1a;
-  --ink: #ebe2db;
-  --muted: #c3b6ae;
-  --line: #4e443e;
-  --inset: #2d2623;
-  --link: #eba58e;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root[data-theme="system"] {
-    color-scheme: dark;
-    --page: #201c1a;
-    --ink: #ebe2db;
-    --muted: #c3b6ae;
-    --line: #4e443e;
-    --inset: #2d2623;
-    --link: #eba58e;
-  }
+  --line: #353d4b;
+  --inset: #282f3c;
+  --link: #9cb7ee;
 }
 
 * { box-sizing: border-box; }
 html { scroll-padding: 26px; }
-body { margin: 0; background: var(--page); color: var(--ink); }
+body { margin: 0; color: var(--ink); }
 article {
   color-scheme: inherit;
   width: min(calc(100% - 52px), var(--reading-width));

@@ -5,7 +5,7 @@ import { expressionInterpreter } from "vega-interpreter";
 import { chartSpec, mermaidSource } from "./spec.js";
 
 const article = document.querySelector("article");
-const dark = () => getComputedStyle(article).colorScheme === "dark";
+const dark = () => document.documentElement.dataset.colorScheme === "dark";
 const original = [...article.querySelectorAll("pre > code.language-mermaid, pre > code.language-vega-lite")]
   .map((code) => ({ pre: code.parentElement, source: code.textContent, mermaid: code.classList.contains("language-mermaid") }));
 let draw = Promise.resolve();
@@ -35,8 +35,18 @@ async function diagrams(current) {
         figure.innerHTML = svg;
       } else {
         const spec = chartSpec(chart.source);
-        const theme = dark() ? { axis: { labelColor: "#ebddd5", titleColor: "#ebddd5", gridColor: "#514640" }, title: { color: "#ebddd5" }, legend: { labelColor: "#ebddd5", titleColor: "#ebddd5" } } : {};
-        const runtime = parse(compile(spec, { config: { background: "transparent", ...theme } }).spec, null, { ast: true });
+        const style = getComputedStyle(article);
+        const ink = style.color;
+        const line = style.getPropertyValue("--line").trim();
+        const config = {
+          background: "transparent",
+          axis: { labelColor: ink, titleColor: ink, gridColor: line, domainColor: line, tickColor: line },
+          title: { color: ink },
+          legend: { labelColor: ink, titleColor: ink },
+          header: { labelColor: ink, titleColor: ink },
+          view: { stroke: line },
+        };
+        const runtime = parse(compile(spec, { config }).spec, null, { ast: true });
         const loader = {
           async load() { throw new Error("External chart data is disabled."); },
           async sanitize() { throw new Error("External chart resources are disabled."); },
@@ -59,6 +69,5 @@ function redraw() {
   draw = draw.then(() => diagrams(current));
 }
 
-window.addEventListener("folio-theme", redraw);
-window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+window.addEventListener("folio-color-scheme", redraw);
 redraw();

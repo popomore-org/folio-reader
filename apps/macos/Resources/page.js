@@ -1,9 +1,11 @@
-window.folioAppearance = (theme, size, width, serif) => {
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.setProperty("--text-size", `${size}px`);
-  document.documentElement.style.setProperty("--reading-width", `${width}px`);
-  document.documentElement.dataset.serif = String(serif);
-  window.dispatchEvent(new Event("folio-theme"));
+window.folioAppearance = (scheme, size, width, serif) => {
+  const root = document.documentElement;
+  const schemeChanged = root.dataset.colorScheme !== scheme;
+  root.dataset.colorScheme = scheme;
+  root.style.setProperty("--text-size", `${size}px`);
+  root.style.setProperty("--reading-width", `${width}px`);
+  root.dataset.serif = String(serif);
+  if (schemeChanged) window.dispatchEvent(new Event("folio-color-scheme"));
 };
 
 window.folioHeading = (id) => document.getElementById(id)?.scrollIntoView({ block: "start" });

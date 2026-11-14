@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 import WebKit
 
 struct ReaderWeb: NSViewRepresentable {
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var tab: ReaderTab
     let follow: (URL) -> Void
     let root: URL
@@ -29,7 +30,7 @@ struct ReaderWeb: NSViewRepresentable {
     }
 
     func updateNSView(_ view: WKWebView, context: Context) {
-        context.coordinator.update(root: root, path: path, html: html, appearance: appearance)
+        context.coordinator.update(root: root, path: path, html: html, appearance: appearance, colorScheme: colorScheme)
     }
 
     static func dismantleNSView(_ view: WKWebView, coordinator: Coordinator) {
@@ -48,6 +49,8 @@ struct ReaderWeb: NSViewRepresentable {
         private var path = ""
         private var html: String?
         private var appearance: Appearance?
+        private var colorScheme: ColorScheme = .light
+        private var webColorScheme: String { colorScheme == .dark ? "dark" : "light" }
         private var pending = true
         private var headingID: String?
         private var navigation: WKNavigation?
@@ -58,9 +61,10 @@ struct ReaderWeb: NSViewRepresentable {
             self.follow = follow
         }
 
-        func update(root: URL, path: String, html: String, appearance: Appearance) {
-            let change = self.appearance != appearance
+        func update(root: URL, path: String, html: String, appearance: Appearance, colorScheme: ColorScheme) {
+            let change = self.appearance != appearance || self.colorScheme != colorScheme
             self.appearance = appearance
+            self.colorScheme = colorScheme
             if self.root != root || self.path != path || self.html != html {
                 self.root = root
                 self.path = path
@@ -94,8 +98,8 @@ struct ReaderWeb: NSViewRepresentable {
 
         private func applyAppearance() {
             guard let appearance else { return }
-            view?.callAsyncJavaScript("window.folioAppearance(theme, size, width, serif)", arguments: [
-                "theme": appearance.theme.rawValue, "size": appearance.size, "width": appearance.width,
+            view?.callAsyncJavaScript("window.folioAppearance(scheme, size, width, serif)", arguments: [
+                "scheme": webColorScheme, "size": appearance.size, "width": appearance.width,
                 "serif": appearance.serif,
             ], in: nil, in: .page)
         }
@@ -201,7 +205,7 @@ struct ReaderWeb: NSViewRepresentable {
                 : ""
             return """
             <!doctype html>
-            <html data-theme="\(a.theme.rawValue)" data-serif="\(a.serif)" style="--text-size:\(a.size)px;--reading-width:\(a.width)px">
+            <html data-color-scheme="\(webColorScheme)" data-serif="\(a.serif)" style="--text-size:\(a.size)px;--reading-width:\(a.width)px">
             <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
