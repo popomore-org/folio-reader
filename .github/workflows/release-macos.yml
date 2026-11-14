@@ -66,6 +66,9 @@ jobs:
     environment: folio-macos-release
     runs-on: xcode-27
     timeout-minutes: 80
+    permissions:
+      actions: read
+      contents: read
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
       FOLIO_RELEASE_REPOSITORY: ${{ vars.FOLIO_RELEASE_REPOSITORY }}
@@ -85,6 +88,7 @@ jobs:
           GH_TOKEN: ${{ secrets.FOLIO_DISTRIBUTION_TOKEN }}
         run: |
           set -euo pipefail
+          : "${GH_TOKEN:?Configure the distribution token}"
           [[ "$FOLIO_RELEASE_REPOSITORY" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]
           test "$FOLIO_RELEASE_REPOSITORY" != "$GITHUB_REPOSITORY"
           gh api "repos/$FOLIO_RELEASE_REPOSITORY" | jq -e '.private == false'
@@ -105,6 +109,43 @@ jobs:
           set -euo pipefail
           scripts/publish-macos-channel "$FOLIO_VERSION" "$RELEASE_ID" resume
       - if: fromJSON(steps.published.outputs.target).release_id == null
+        id: signed
+        name: Look for signed packages from this run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_DRAFT: ${{ steps.published.outputs.exists }}
+        run: |
+          set -euo pipefail
+          artifacts=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+            --method GET -f name=folio-signed-packages)
+          count=$(jq -er '.total_count' <<< "$artifacts")
+          case "$count" in
+            0)
+              if [[ "$HAS_DRAFT" == true ]]; then
+                echo "::error::The incomplete release has no retained signed packages in this run. Use the original run and its packages."
+                exit 1
+              fi
+              ;;
+            1)
+              id=$(jq -er '.artifacts[0] | select(.name == "folio-signed-packages" and .expired == false) | .id | select(type == "number")' <<< "$artifacts") || {
+                echo "::error::The retained signed packages have expired or cannot be identified."
+                exit 1
+              }
+              printf 'id=%s\n' "$id" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::More than one signed package artifact matches this run."
+              exit 1
+              ;;
+          esac
+      - if: steps.signed.outputs.id != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ steps.signed.outputs.id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          path: dist
+      - if: fromJSON(steps.published.outputs.target).release_id == null && steps.signed.outputs.id == ''
         name: Import Developer ID and build notarized packages
         env:
           FOLIO_APPLE_CERTIFICATE: ${{ secrets.FOLIO_APPLE_CERTIFICATE }}
@@ -139,6 +180,17 @@ jobs:
           FOLIO_APPLE_SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p')
           export FOLIO_APPLE_SIGNING_IDENTITY
           scripts/package-macos-release
+      - if: fromJSON(steps.published.outputs.target).release_id == null && steps.signed.outputs.id == ''
+        name: Retain the exact signed packages before staging
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: folio-signed-packages
+          path: |
+            dist/Folio-${{ env.FOLIO_VERSION }}.zip
+            dist/Folio-${{ env.FOLIO_VERSION }}.dmg
+            dist/appcast.xml
+          if-no-files-found: error
+          compression-level: 0
       - if: fromJSON(steps.published.outputs.target).release_id == null
         id: stage
         uses: popomore-org/meta/.github/actions/release-assets@a3a966614c0ccd31f4b2255808172390266b1d4f
