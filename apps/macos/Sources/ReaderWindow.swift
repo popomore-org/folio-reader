@@ -219,7 +219,7 @@ private struct TabButton: View {
     }
 }
 
-private struct TabDocument: View {
+struct TabDocument: View {
     @ObservedObject var tab: ReaderTab
     let appearance: Appearance
     let setMediaActivity: (UUID, Bool) -> Void

@@ -43,6 +43,14 @@ scripts/check-consumer
 
 本地预览使用独立的 `org.popomore.folio.preview` 应用标识。正式构建提供 Sparkle 自动更新，签名、公证和稳定渠道配置见 [macOS 自动更新](docs/macos-updates.md)。最低系统版本为 macOS 14，目前真机记录覆盖 macOS 27.0.1。
 
+## 从其他应用快速预览
+
+Raycast 的 **Script Commands** 加入本仓的 `integrations/raycast` 目录，然后搜索 **Preview in Folio**。可以粘贴绝对文件路径，留空则打开系统文件选择器。首次使用前先打开一次 Folio，让 macOS 注册链接。
+
+其他应用可打开 `folio-reader://preview?path=%2FUsers%2Fme%2FNotes%2FReadme.md`。通过 URL 查询参数传入本地绝对路径，编码由调用方的 URL API 处理。开发预览版使用 `folio-reader-preview://preview`。
+
+预览小窗可缩放，沿用 Folio 的阅读外观。按 `Esc` 或 `⌘W` 关闭。需要编辑时从工具栏选 **Open in Folio**，即可在主工作区打开当前文件。
+
 ## Rust 集成
 
 宿主依赖 `crates/folio-core`，可用 Cargo 的 `path`，也可在具备仓库读取权限时使用 Git 依赖并锁定 `rev`。默认 `git` feature 使用本地 libgit2。关闭默认 feature 可构建不带 Git 的预览库。应用使用的 `folio-bridge` 属于内部 Swift 适配层。

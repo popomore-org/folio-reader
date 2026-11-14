@@ -62,6 +62,10 @@ with open(path, "rb") as file:
     info = plistlib.load(file)
 info.update(CFBundleDisplayName=name, CFBundleName=name, CFBundleIdentifier=identifier,
             CFBundleShortVersionString=version, CFBundleVersion=build)
+scheme = {"preview": "folio-reader-preview", "qa": "folio-reader-update-qa", "release": "folio-reader"}[mode]
+info.update(FolioPreviewScheme=scheme, CFBundleURLTypes=[
+    {"CFBundleURLName": identifier + ".quick-preview", "CFBundleURLSchemes": [scheme], "CFBundleTypeRole": "Viewer"},
+])
 if mode != "preview":
     key = os.environ["FOLIO_UPDATE_PUBLIC_KEY"]
     if len(base64.b64decode(key, validate=True)) != 32:

@@ -6,22 +6,15 @@ struct Folio: App {
     @NSApplicationDelegateAdaptor(FolioDelegate.self) private var delegate
     @StateObject private var model = ReaderModel()
     @StateObject private var updates = FolioUpdates()
+    @FocusedValue(\.quickPreviewActive) private var quickPreviewActive
+
+    private var workspaceFocused: Bool { quickPreviewActive != true }
 
     var body: some Scene {
-        WindowGroup("Folio") {
-            ReaderWindow(updates: updates, model: model)
-                .preferredColorScheme(model.appearance.workspace.colorScheme)
-                .frame(minWidth: 910, minHeight: 500)
-                .onAppear {
-                    delegate.model = model
-                    delegate.updates = updates
-                    updates.start(model: model)
-                    DispatchQueue.main.async { updates.offerUpdateChecks(on: NSApp.mainWindow) }
-                    model.openURLs(delegate.pending)
-                    delegate.pending = []
-                }
-                .background(WindowOwner(model: model, updates: updates))
+        WindowGroup("Folio", id: "workspace") {
+            WorkspaceSceneContent(delegate: delegate, model: model, updates: updates)
         }
+        .handlesExternalEvents(matching: [])
         .defaultSize(width: 1130, height: 760)
         .commands {
             CommandGroup(after: .appInfo) {
@@ -29,45 +22,59 @@ struct Folio: App {
                     .disabled(!updates.isConfigured)
             }
             CommandGroup(replacing: .newItem) {
-                Button("Open…") { model.choose() }.keyboardShortcut("o")
-                Button("Add Folders…") { model.choose(foldersOnly: true) }
-                Button("Close Tab", action: model.closeActive).keyboardShortcut("w").disabled(model.active == nil && !model.showingGit)
+                Button("Open…") { model.choose() }.keyboardShortcut("o").disabled(!workspaceFocused)
+                Button("Add Folders…") { model.choose(foldersOnly: true) }.disabled(!workspaceFocused)
+                if workspaceFocused {
+                    Button("Close Tab", action: model.closeActive)
+                        .keyboardShortcut("w").disabled(model.active == nil && !model.showingGit)
+                } else {
+                    Button("Close Preview") { NSApp.keyWindow?.performClose(nil) }.keyboardShortcut("w")
+                }
             }
             CommandGroup(replacing: .saveItem) {
-                Button("Save") { model.active?.save() }.keyboardShortcut("s").disabled(model.active?.editing != true || model.showingGit)
-                Button("Reload from Disk", action: model.reload).keyboardShortcut("r").disabled(model.gitLocation == nil)
+                Button("Save") { model.active?.save() }.keyboardShortcut("s").disabled(!workspaceFocused || model.active?.editing != true || model.showingGit)
+                Button("Reload from Disk", action: model.reload).keyboardShortcut("r").disabled(!workspaceFocused || model.gitLocation == nil)
             }
             CommandGroup(after: .textEditing) {
                 Button("Find in Document") { model.active?.finding = true }
-                    .keyboardShortcut("f").disabled(model.active?.canFind != true || model.showingGit)
+                    .keyboardShortcut("f").disabled(!workspaceFocused || model.active?.canFind != true || model.showingGit)
                 Button("Edit Source") { model.active?.edit() }
-                    .keyboardShortcut("e").disabled(model.active?.canEdit != true || model.showingGit)
+                    .keyboardShortcut("e").disabled(!workspaceFocused || model.active?.canEdit != true || model.showingGit)
             }
             CommandGroup(after: .toolbar) {
                 Button("Focus Folder Tree", action: model.focusFolderTree)
-                    .keyboardShortcut("e", modifiers: [.command, .shift])
+                    .keyboardShortcut("e", modifiers: [.command, .shift]).disabled(!workspaceFocused)
                 Button(model.sidebar ? "Hide Sidebar" : "Show Sidebar") { model.sidebar.toggle() }
-                    .keyboardShortcut("s", modifiers: [.command, .control])
+                    .keyboardShortcut("s", modifiers: [.command, .control]).disabled(!workspaceFocused)
                 Button(model.inspector ? "Hide Inspector" : "Show Inspector") { model.inspector.toggle() }
-                    .keyboardShortcut("i", modifiers: [.command, .option])
+                    .keyboardShortcut("i", modifiers: [.command, .option]).disabled(!workspaceFocused)
                 Button("Focus Reading") {
                     let focus = model.sidebar || model.inspector
                     model.sidebar = !focus
                     model.inspector = false
                 }
-                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .keyboardShortcut("f", modifiers: [.command, .shift]).disabled(!workspaceFocused)
                 Button(model.split ? "Merge Panes" : "Split Right", action: model.toggleSplit)
-                    .keyboardShortcut("\\")
-                Button("Next Tab") { model.cycle(1) }.keyboardShortcut(.tab, modifiers: [.control])
-                Button("Previous Tab") { model.cycle(-1) }.keyboardShortcut(.tab, modifiers: [.control, .shift])
+                    .keyboardShortcut("\\").disabled(!workspaceFocused)
+                Button("Next Tab") { model.cycle(1) }.keyboardShortcut(.tab, modifiers: [.control]).disabled(!workspaceFocused)
+                Button("Previous Tab") { model.cycle(-1) }.keyboardShortcut(.tab, modifiers: [.control, .shift]).disabled(!workspaceFocused)
                 Button(model.showingGit ? "Back to Reading" : "Show Git") { model.showingGit.toggle() }
-                    .disabled(model.gitLocation == nil)
+                    .disabled(!workspaceFocused || model.gitLocation == nil)
                 Divider()
                 Button("Increase Text Size") { model.appearance.size = min(30, model.appearance.size + 1) }.keyboardShortcut("=")
                 Button("Decrease Text Size") { model.appearance.size = max(13, model.appearance.size - 1) }.keyboardShortcut("-")
                 Button("Reset Text Size") { model.appearance.size = 18 }.keyboardShortcut("0")
             }
         }
+        Window("Quick Preview", id: QuickPreviewRequest.windowID) {
+            PreviewSceneContent(delegate: delegate, model: model, updates: updates)
+                .preferredColorScheme(model.appearance.workspace.colorScheme)
+        }
+        .defaultSize(width: 680, height: 580)
+        .defaultPosition(.center)
+        .handlesExternalEvents(matching: [QuickPreviewRequest.route])
+        .commandsRemoved()
+
         Settings {
             ReaderSettings(model: model, updates: updates)
                 .preferredColorScheme(model.appearance.workspace.colorScheme)
@@ -80,9 +87,25 @@ final class FolioDelegate: NSObject, NSApplicationDelegate {
     weak var model: ReaderModel?
     weak var updates: FolioUpdates?
     var pending: [URL] = []
+    var showWorkspace: (([URL]) -> Void)?
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        if let model { model.openURLs(urls) } else { pending.append(contentsOf: urls) }
+        let files = urls.filter(\.isFileURL)
+        guard !files.isEmpty else { return }
+        if let showWorkspace { showWorkspace(files) } else { pending.append(contentsOf: files) }
+    }
+
+    func registerWorkspace(model: ReaderModel, openWindow: OpenWindowAction) {
+        showWorkspace = { [weak self, weak model] urls in
+            if let window = NSApp.windows.first(where: { $0.identifier == WindowOwner.identifier && ($0.isVisible || $0.isMiniaturized) }) {
+                model?.openURLs(urls)
+                if window.isMiniaturized { window.deminiaturize(nil) }
+                window.makeKeyAndOrderFront(nil)
+            } else {
+                self?.pending.append(contentsOf: urls)
+                openWindow(id: "workspace")
+            }
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -93,7 +116,54 @@ final class FolioDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 
+private struct WorkspaceSceneContent: View {
+    let delegate: FolioDelegate
+    @ObservedObject var model: ReaderModel
+    let updates: FolioUpdates
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        ReaderWindow(updates: updates, model: model)
+            .preferredColorScheme(model.appearance.workspace.colorScheme)
+            .frame(minWidth: 910, minHeight: 500)
+            .onAppear {
+                delegate.model = model
+                delegate.updates = updates
+                delegate.registerWorkspace(model: model, openWindow: openWindow)
+                updates.start(model: model)
+                DispatchQueue.main.async { updates.offerUpdateChecks(on: NSApp.mainWindow) }
+                model.openURLs(delegate.pending)
+                delegate.pending = []
+            }
+            .background(WindowOwner(model: model, updates: updates))
+    }
+}
+
+private struct PreviewSceneContent: View {
+    let delegate: FolioDelegate
+    @ObservedObject var model: ReaderModel
+    let updates: FolioUpdates
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        QuickPreview(model: model) { url in
+            delegate.showWorkspace?([url])
+        }
+        .onAppear {
+            delegate.updates = updates
+            delegate.registerWorkspace(model: model, openWindow: openWindow)
+            updates.start(model: model)
+            if !delegate.pending.isEmpty {
+                let files = delegate.pending
+                delegate.pending = []
+                delegate.showWorkspace?(files)
+            }
+        }
+    }
+}
+
 struct WindowOwner: NSViewRepresentable {
+    static let identifier = NSUserInterfaceItemIdentifier("folio.workspace")
     let model: ReaderModel
     let updates: FolioUpdates
 
@@ -122,6 +192,7 @@ struct WindowOwner: NSViewRepresentable {
             guard let window, window.delegate !== self else { return }
             previous = window.delegate
             window.delegate = self
+            window.identifier = WindowOwner.identifier
             window.tabbingMode = .disallowed
             DispatchQueue.main.async { [weak self, weak window] in self?.updates?.offerUpdateChecks(on: window) }
         }
