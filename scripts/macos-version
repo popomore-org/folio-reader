@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+import re
+import sys
+
+match = re.fullmatch(r"(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)", sys.argv[1])
+if not match or int(match[1]) == 9999:
+    sys.exit("Expected a release version with major 0–9998 and minor and patch 0–99.")
+major, minor, patch = map(int, match.groups())
+print(f"{major + 1}.{minor}.{patch}")

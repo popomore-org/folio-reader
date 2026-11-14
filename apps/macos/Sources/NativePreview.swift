@@ -7,6 +7,7 @@ struct NativePreview: View {
     let file: URL
     let kind: FileKind
     let bytes: Int64
+    let playbackChanged: (Bool) -> Void
 
     @ViewBuilder
     var body: some View {
@@ -32,7 +33,7 @@ struct NativePreview: View {
                 unavailable("This image could not be decoded.")
             }
         case .audio, .video:
-            MediaReader(file: file, audio: kind == .audio)
+            MediaReader(file: file, audio: kind == .audio, playbackChanged: playbackChanged)
         default:
             unavailable("Folio has no preview for this file type.")
         }
@@ -118,6 +119,7 @@ struct SourceEditor: NSViewRepresentable {
 struct MediaReader: View {
     let file: URL
     let audio: Bool
+    let playbackChanged: (Bool) -> Void
     @State private var player = AVPlayer()
     @State private var error: String?
 
@@ -150,7 +152,11 @@ struct MediaReader: View {
                 if !Task.isCancelled { self.error = error.localizedDescription }
             }
         }
+        .onReceive(player.publisher(for: \.timeControlStatus)) { state in
+            playbackChanged(state != .paused)
+        }
         .onDisappear {
+            playbackChanged(false)
             player.pause()
             player.replaceCurrentItem(with: nil)
         }

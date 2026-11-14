@@ -5,35 +5,100 @@ cd "$(dirname "$0")/.."
 arch="$(uname -m)"
 case "$arch" in
   arm64) target=aarch64-apple-darwin ;;
-  *) echo "Folio Preview currently targets Apple Silicon." >&2; exit 1 ;;
+  *) echo "Folio currently targets Apple Silicon." >&2; exit 1 ;;
 esac
 
 export MACOSX_DEPLOYMENT_TARGET=14.0
 export CARGO_TARGET_DIR="$PWD/target"
 rust_version="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
 build="$PWD/.build"
-bundle="$build/Folio Preview.app"
+mode="${1:-preview}"
+version="${FOLIO_VERSION:-0.1.0}"
+identity=-
+case "$mode" in
+  preview) name="Folio Preview"; bundle_id=org.popomore.folio.preview ;;
+  qa)
+    name="Folio Update QA"
+    bundle_id=org.popomore.folio.update-qa
+    [[ "${FOLIO_UPDATE_FEED:-}" =~ ^http://localhost:[0-9]+/appcast\.xml$ ]] ||
+      { echo "QA requires an HTTP localhost appcast." >&2; exit 1; }
+    ;;
+  release)
+    name=Folio
+    bundle_id=org.popomore.folio
+    identity="${FOLIO_APPLE_SIGNING_IDENTITY:?Set the Developer ID Application signing identity}"
+    [[ "$identity" == "Developer ID Application: "* ]] ||
+      { echo "Release requires a Developer ID Application certificate." >&2; exit 1; }
+    [[ "${FOLIO_UPDATE_FEED:-}" =~ ^https://github\.com/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+/releases/latest/download/appcast\.xml$ ]] ||
+      { echo "Release requires the HTTPS GitHub distribution appcast." >&2; exit 1; }
+    : "${FOLIO_VERSION:?Set the release version from the verified source tag}"
+    ;;
+  *) echo "Usage: scripts/build-macos [preview|qa|release]" >&2; exit 1 ;;
+esac
+build_number="$(scripts/macos-version "$version")"
+bundle="$build/$name.app"
+sparkle="$(scripts/prepare-sparkle)"
 mkdir -p "$build"
 
 stage="$(mktemp -d "$build/stage.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT
-staged="$stage/Folio Preview.app"
-mkdir -p "$staged/Contents/"{MacOS,Resources} "$stage/app.iconset"
+staged="$stage/$name.app"
+mkdir -p "$staged/Contents/"{MacOS,Resources,Frameworks} "$stage/app.iconset"
 
-rustup run "$rust_version" cargo build --locked --release --target "$target" -p folio-bridge
-npm ci --prefix renderer --ignore-scripts --no-audit --no-fund
-npm run --prefix renderer build -- "$staged/Contents/Resources"
+rustup run "$rust_version" cargo build --locked --release --target "$target" -p folio-bridge >&2
+npm ci --prefix renderer --ignore-scripts --no-audit --no-fund >&2
+npm run --prefix renderer build -- "$staged/Contents/Resources" >&2
 cp apps/macos/Resources/* "$staged/Contents/Resources/"
 cp apps/macos/Info.plist "$staged/Contents/"
+ditto "$sparkle/Sparkle.framework" "$staged/Contents/Frameworks/Sparkle.framework"
+python3 - "$staged/Contents/Info.plist" "$mode" "$name" "$bundle_id" "$version" "$build_number" <<'PLIST'
+import base64
+import os
+import plistlib
+import sys
+
+path, mode, name, identifier, version, build = sys.argv[1:]
+with open(path, "rb") as file:
+    info = plistlib.load(file)
+info.update(CFBundleDisplayName=name, CFBundleName=name, CFBundleIdentifier=identifier,
+            CFBundleShortVersionString=version, CFBundleVersion=build)
+if mode != "preview":
+    key = os.environ["FOLIO_UPDATE_PUBLIC_KEY"]
+    if len(base64.b64decode(key, validate=True)) != 32:
+        sys.exit("Expected a base64 Ed25519 public key.")
+    info.update(SUFeedURL=os.environ["FOLIO_UPDATE_FEED"], SUPublicEDKey=key,
+                SUEnableAutomaticChecks=False, SUAllowsAutomaticUpdates=False,
+                SUEnableDownloaderService=False, SUScheduledCheckInterval=86400,
+                SUVerifyUpdateBeforeExtraction=True, SURequireSignedFeed=True)
+if mode == "qa":
+    info["NSAppTransportSecurity"] = {"NSAllowsLocalNetworking": True}
+with open(path, "wb") as file:
+    plistlib.dump(info, file)
+PLIST
 xcrun swift apps/macos/icon.swift "$stage/app.iconset"
 iconutil -c icns "$stage/app.iconset" -o "$staged/Contents/Resources/Folio.icns"
 xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-errors -O \
-  -import-objc-header apps/macos/Bridge.h \
+  -import-objc-header apps/macos/Bridge.h -F "$sparkle" -framework Sparkle \
+  -Xlinker -rpath -Xlinker '@executable_path/../Frameworks' \
   apps/macos/Sources/*.swift "$CARGO_TARGET_DIR/$target/release/libfolio_bridge.a" \
   -lz -liconv -framework Security -framework SystemConfiguration -framework CoreFoundation \
   -o "$staged/Contents/MacOS/Folio"
-codesign --force --sign - "$staged"
-codesign --verify --strict "$staged"
+sign=(--force --sign "$identity")
+if [[ "$mode" == release ]]; then
+  sign+=(--timestamp --options runtime)
+  if [[ -n "${FOLIO_SIGNING_KEYCHAIN:-}" ]]; then
+    sign+=(--keychain "$FOLIO_SIGNING_KEYCHAIN")
+  fi
+fi
+framework="$staged/Contents/Frameworks/Sparkle.framework"
+version_root="$framework/Versions/Current"
+codesign "${sign[@]}" "$version_root/Autoupdate"
+codesign "${sign[@]}" "$version_root/Updater.app"
+codesign "${sign[@]}" "$version_root/XPCServices/Downloader.xpc"
+codesign "${sign[@]}" "$version_root/XPCServices/Installer.xpc"
+codesign "${sign[@]}" "$framework"
+codesign "${sign[@]}" "$staged"
+codesign --verify --deep --strict "$staged"
 rm -rf "$bundle"
 mv "$staged" "$bundle"
 printf '%s\n' "$bundle"

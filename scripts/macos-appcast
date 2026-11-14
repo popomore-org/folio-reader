@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+import base64
+from pathlib import Path
+from subprocess import check_output, run
+import sys
+import xml.etree.ElementTree as ET
+
+version, archive, url, notes, appcast, key_file = sys.argv[1:]
+archive = Path(archive)
+sparkle = check_output(["scripts/prepare-sparkle"], text=True).strip()
+sign = str(Path(sparkle) / "bin/sign_update")
+sign_file = [sign, "--ed-key-file", key_file]
+signature = check_output([*sign_file, "-p", str(archive)], text=True).strip()
+if len(base64.b64decode(signature, validate=True)) != 64:
+    sys.exit("Unexpected Sparkle archive signature.")
+if not 0 < archive.stat().st_size <= 64 * 1024 * 1024:
+    sys.exit("The update archive exceeds Folio’s 64 MiB update limit.")
+
+sparkle_ns = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+ET.register_namespace("sparkle", sparkle_ns)
+def sparkle_tag(name):
+    return f"{{{sparkle_ns}}}{name}"
+
+rss = ET.Element("rss", version="2.0")
+channel = ET.SubElement(rss, "channel")
+ET.SubElement(channel, "title").text = "Folio"
+item = ET.SubElement(channel, "item")
+ET.SubElement(item, "title").text = f"Folio {version}"
+ET.SubElement(item, "description", {sparkle_tag("format"): "plain-text"}).text = Path(notes).read_text().strip()
+ET.SubElement(item, sparkle_tag("version")).text = check_output(["scripts/macos-version", version], text=True).strip()
+ET.SubElement(item, sparkle_tag("shortVersionString")).text = version
+ET.SubElement(item, sparkle_tag("minimumSystemVersion")).text = "14.0"
+ET.SubElement(item, sparkle_tag("hardwareRequirements")).text = "arm64"
+ET.SubElement(item, "enclosure", {
+    "url": url, "length": str(archive.stat().st_size), "type": "application/zip",
+    sparkle_tag("edSignature"): signature,
+})
+ET.indent(rss)
+ET.ElementTree(rss).write(appcast, encoding="utf-8", xml_declaration=True)
+run([*sign_file, appcast], check=True)
+run([*sign_file, "--verify", appcast], check=True)
+run([*sign_file, "--verify", str(archive), signature], check=True)

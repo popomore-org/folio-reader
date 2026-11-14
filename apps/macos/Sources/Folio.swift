@@ -5,21 +5,29 @@ import SwiftUI
 struct Folio: App {
     @NSApplicationDelegateAdaptor(FolioDelegate.self) private var delegate
     @StateObject private var model = ReaderModel()
+    @StateObject private var updates = FolioUpdates()
 
     var body: some Scene {
         WindowGroup("Folio") {
-            ReaderWindow(model: model)
+            ReaderWindow(updates: updates, model: model)
                 .preferredColorScheme(model.appearance.workspace.colorScheme)
                 .frame(minWidth: 910, minHeight: 500)
                 .onAppear {
                     delegate.model = model
+                    delegate.updates = updates
+                    updates.start(model: model)
+                    DispatchQueue.main.async { updates.offerUpdateChecks(on: NSApp.mainWindow) }
                     model.openURLs(delegate.pending)
                     delegate.pending = []
                 }
-                .background(WindowOwner(model: model))
+                .background(WindowOwner(model: model, updates: updates))
         }
         .defaultSize(width: 1130, height: 760)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…", action: updates.openUpdateSettings)
+                    .disabled(!updates.isConfigured)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Open…") { model.choose() }.keyboardShortcut("o")
                 Button("Add Folders…") { model.choose(foldersOnly: true) }
@@ -60,13 +68,17 @@ struct Folio: App {
                 Button("Reset Text Size") { model.appearance.size = 18 }.keyboardShortcut("0")
             }
         }
-        Settings { ReaderSettings(model: model).preferredColorScheme(model.appearance.workspace.colorScheme) }
+        Settings {
+            ReaderSettings(model: model, updates: updates)
+                .preferredColorScheme(model.appearance.workspace.colorScheme)
+        }
     }
 }
 
 @MainActor
 final class FolioDelegate: NSObject, NSApplicationDelegate {
     weak var model: ReaderModel?
+    weak var updates: FolioUpdates?
     var pending: [URL] = []
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -74,7 +86,8 @@ final class FolioDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        model?.protectAllDrafts() == false ? .terminateCancel : .terminateNow
+        guard updates?.allowUpdateTermination() != false else { return .terminateCancel }
+        return model?.protectAllDrafts() == false ? .terminateCancel : .terminateNow
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -82,9 +95,10 @@ final class FolioDelegate: NSObject, NSApplicationDelegate {
 
 struct WindowOwner: NSViewRepresentable {
     let model: ReaderModel
+    let updates: FolioUpdates
 
     func makeNSView(context: Context) -> Owner {
-        Owner(model: model)
+        Owner(model: model, updates: updates)
     }
 
     func updateNSView(_ view: Owner, context: Context) {}
@@ -92,10 +106,12 @@ struct WindowOwner: NSViewRepresentable {
     @MainActor
     final class Owner: NSView, NSWindowDelegate {
         weak var model: ReaderModel?
+        weak var updates: FolioUpdates?
         nonisolated(unsafe) weak var previous: (any NSWindowDelegate)?
 
-        init(model: ReaderModel) {
+        init(model: ReaderModel, updates: FolioUpdates) {
             self.model = model
+            self.updates = updates
             super.init(frame: .zero)
         }
 
@@ -107,6 +123,7 @@ struct WindowOwner: NSViewRepresentable {
             previous = window.delegate
             window.delegate = self
             window.tabbingMode = .disallowed
+            DispatchQueue.main.async { [weak self, weak window] in self?.updates?.offerUpdateChecks(on: window) }
         }
 
         override func responds(to aSelector: Selector!) -> Bool {

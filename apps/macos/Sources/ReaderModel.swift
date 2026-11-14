@@ -154,6 +154,17 @@ final class ReaderModel: ObservableObject {
     @Published private(set) var folderTreeFocus: UUID?
 
     private var observation: AnyCancellable?
+    private var activeMedia: Set<UUID> = []
+    private var openPanels = 0
+
+    var hasUpdateActivity: Bool {
+        !activeMedia.isEmpty || openPanels > 0 ||
+            groups.values.contains { $0.tabs.contains { $0.editing || $0.loading } }
+    }
+
+    func setMediaActivity(_ id: UUID, active: Bool) {
+        if active { activeMedia.insert(id) } else { activeMedia.remove(id) }
+    }
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -325,12 +336,16 @@ final class ReaderModel: ObservableObject {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = true
         panel.prompt = foldersOnly ? "Add" : "Open"
+        openPanels += 1
         if let window = NSApp.keyWindow {
             panel.beginSheetModal(for: window) { [weak self] response in
-                if response == .OK { self?.openURLs(panel.urls) }
+                guard let self else { return }
+                defer { openPanels -= 1 }
+                if response == .OK { openURLs(panel.urls) }
             }
-        } else if panel.runModal() == .OK {
-            openURLs(panel.urls)
+        } else {
+            defer { openPanels -= 1 }
+            if panel.runModal() == .OK { openURLs(panel.urls) }
         }
     }
 
@@ -400,8 +415,11 @@ final class ReaderModel: ObservableObject {
         panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
         panel.prompt = "Open"
         panel.message = "Choose an application to open \(file.lastPathComponent)."
+        openPanels += 1
         panel.beginSheetModal(for: window) { [weak self] response in
-            if response == .OK, let application = panel.url { self?.openExternally(file, application: application) }
+            guard let self else { return }
+            defer { openPanels -= 1 }
+            if response == .OK, let application = panel.url { openExternally(file, application: application) }
         }
     }
 

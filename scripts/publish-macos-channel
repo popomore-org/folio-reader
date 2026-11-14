@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+: "${GH_TOKEN:?Configure distribution credentials}"
+: "${FOLIO_RELEASE_REPOSITORY:?Set the distribution repository}"
+repo="repos/$FOLIO_RELEASE_REPOSITORY"
+version="${1:?Supply the version}"
+current_build="$(scripts/macos-version "$version")"
+mode="${3:-promote}"
+id="${2:?Supply the staged release ID}"
+[[ "$id" =~ ^[0-9]+$ ]]
+metadata=$(gh api "$repo")
+jq -e '.private == false' <<< "$metadata" > /dev/null
+
+receipt=$(gh api "$repo/releases/$id")
+jq -e --arg tag "v$version" '.tag_name == $tag and .prerelease == false' <<< "$receipt" > /dev/null
+verification=$(mktemp -d "${TMPDIR:-/tmp}/folio-verify.XXXXXX")
+trap 'rm -rf "$verification"' EXIT
+[[ "$mode" == promote || "$mode" == resume ]]
+for name in "Folio-$version.zip" "Folio-$version.dmg" appcast.xml; do
+  asset=$(jq -ce --arg name "$name" '.assets[] | select(.name == $name)' <<< "$receipt")
+  asset_id=$(jq -er .id <<< "$asset")
+  digest=$(jq -er .digest <<< "$asset")
+  gh api "$repo/releases/assets/$asset_id" -H 'Accept: application/octet-stream' > "$verification/$name"
+  test "$digest" = "sha256:$(shasum -a 256 "$verification/$name" | cut -d' ' -f1)"
+  if [[ "$mode" == promote ]]; then
+    cmp "dist/$name" "$verification/$name"
+  fi
+done
+if jq -e '.draft == true' <<< "$receipt" > /dev/null; then
+  gh api "$repo/releases/$id" --method PATCH -F draft=false -f make_latest=false --jq .html_url
+fi
+gh api "$repo/releases/$id" | jq -e '.draft == false and .immutable == true' > /dev/null
+for name in "Folio-$version.zip" "Folio-$version.dmg" appcast.xml; do
+  curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
+    --proto '=https' --proto-redir '=https' \
+    "https://github.com/$FOLIO_RELEASE_REPOSITORY/releases/download/v$version/$name" -o "$verification/public"
+  cmp "$verification/$name" "$verification/public"
+done
+if latest=$(gh api "$repo/releases/latest" 2>&1); then
+  latest_version=$(jq -er '.tag_name | select(startswith("v")) | ltrimstr("v")' <<< "$latest")
+  latest_build="$(scripts/macos-version "$latest_version")"
+  comparison=$(python3 - "$current_build" "$latest_build" <<'PYTHON'
+import sys
+def numbers(value):
+    return tuple(map(int, value.split(".")))
+first, second = map(numbers, sys.argv[1:])
+print((first > second) - (first < second))
+PYTHON
+  )
+  if [[ "$comparison" == -1 ]]; then
+    echo "Versioned assets verified. The stable channel already has a newer version."
+    exit 0
+  fi
+elif [[ "$latest" != *"HTTP 404"* ]]; then
+  printf '%s\n' "$latest" >&2
+  exit 1
+fi
+gh api "$repo/releases/$id" --method PATCH -f make_latest=true --jq .html_url
+curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
+  --proto '=https' --proto-redir '=https' \
+  "https://github.com/$FOLIO_RELEASE_REPOSITORY/releases/latest/download/appcast.xml" -o "$verification/latest.xml"
+cmp "$verification/appcast.xml" "$verification/latest.xml"

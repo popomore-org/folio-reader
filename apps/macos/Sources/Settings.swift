@@ -47,8 +47,18 @@ struct Appearance: Equatable {
 
 struct ReaderSettings: View {
     @ObservedObject var model: ReaderModel
+    @ObservedObject var updates: FolioUpdates
 
     var body: some View {
+        TabView(selection: $updates.settingsPage) {
+            appearance.tabItem { Label("Appearance", systemImage: "textformat") }.tag(FolioUpdates.SettingsPage.appearance)
+            UpdateSettings(updates: updates)
+                .tabItem { Label("Updates", systemImage: "arrow.clockwise") }.tag(FolioUpdates.SettingsPage.updates)
+        }
+        .frame(width: 500, height: 420)
+    }
+
+    private var appearance: some View {
         Form {
             Section("Workspace") {
                 Picker("Appearance", selection: $model.appearance.workspace) {
@@ -72,6 +82,59 @@ struct ReaderSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 450, height: 315)
+    }
+}
+
+
+private struct UpdateSettings: View {
+    @ObservedObject var updates: FolioUpdates
+
+    var body: some View {
+        Form {
+            Section("Software Update") {
+                LabeledContent("Installed version", value: updates.currentVersion)
+                if updates.isConfigured {
+                    TimelineView(.periodic(from: .now, by: 0.4)) { _ in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(updates.status)
+                            if let progress = updates.downloadProgress {
+                                ProgressView(value: progress)
+                            } else if updates.isWorking {
+                                ProgressView().controlSize(.small)
+                            }
+                        }
+                    }
+                    if let version = updates.version {
+                        LabeledContent("Available version", value: version)
+                        ScrollView {
+                            Text(updates.notes).frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                        }
+                        .frame(maxHeight: 100)
+                        .accessibilityLabel("Release Notes")
+                    }
+                    HStack {
+                        Button(updates.lastCheckFailed ? "Retry Check" : "Check for Updates", action: updates.check)
+                            .disabled(!updates.canCheck)
+                        if updates.canDownload { Button("Download", action: updates.download) }
+                        if updates.canInstall { Button("Install and Restart", action: updates.install) }
+                        if updates.canDefer { Button("Install Later", action: updates.deferInstallation) }
+                        if updates.canCancel { Button("Cancel", action: updates.cancel) }
+                    }
+                } else {
+                    Text("This preview is updated by installing a new preview build.").foregroundStyle(.secondary)
+                }
+            }
+            if updates.isConfigured {
+                Section("Automatic Updates") {
+                    Toggle("Check every 24 hours", isOn: Binding(get: { updates.automaticChecks }, set: updates.setAutomaticChecks))
+                    Toggle("Download available updates", isOn: $updates.automaticDownloads)
+                    Toggle("Install and restart when Folio is idle", isOn: $updates.automaticInstalls)
+                    Text("Automatic download applies to scheduled checks. Installation waits for edits, file opening, and media playback.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
     }
 }

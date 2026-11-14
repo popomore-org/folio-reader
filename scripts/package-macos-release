@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+umask 077
+: "${FOLIO_RELEASE_REPOSITORY:?Set the distribution repository}"
+: "${FOLIO_VERSION:?Set the release version}"
+: "${FOLIO_UPDATE_PRIVATE_KEY:?Configure the Sparkle Ed25519 seed}"
+[[ "$FOLIO_RELEASE_REPOSITORY" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]
+export FOLIO_UPDATE_FEED="https://github.com/$FOLIO_RELEASE_REPOSITORY/releases/latest/download/appcast.xml"
+export FOLIO_UPDATE_PUBLIC_KEY
+: "${FOLIO_UPDATE_PUBLIC_KEY:?Pin the stable channel’s Ed25519 public key}"
+test "$FOLIO_UPDATE_PUBLIC_KEY" = "$(printf '%s\n' "$FOLIO_UPDATE_PRIVATE_KEY" | xcrun swift scripts/macos-update-key.swift)"
+key_directory=$(mktemp -d "${TMPDIR:-/tmp}/folio-release.XXXXXX")
+trap 'rm -rf "$key_directory"' EXIT
+printf '%s\n' "$FOLIO_UPDATE_PRIVATE_KEY" > "$key_directory/sparkle"
+unset FOLIO_UPDATE_PRIVATE_KEY
+bundle="$(scripts/build-macos release)"
+
+: "${FOLIO_APPLE_NOTARY_KEY:?Configure the notarization API private key}"
+: "${FOLIO_APPLE_NOTARY_KEY_ID:?Configure the notarization key ID}"
+: "${FOLIO_APPLE_NOTARY_ISSUER:?Configure the notarization issuer}"
+printf '%s\n' "$FOLIO_APPLE_NOTARY_KEY" > "$key_directory/notary.p8"
+unset FOLIO_APPLE_NOTARY_KEY
+notarize() {
+  xcrun notarytool submit "$1" --key "$key_directory/notary.p8" \
+    --key-id "$FOLIO_APPLE_NOTARY_KEY_ID" --issuer "$FOLIO_APPLE_NOTARY_ISSUER" --wait --timeout 20m
+}
+
+ditto -c -k --keepParent "$bundle" "$key_directory/notary.zip"
+notarize "$key_directory/notary.zip"
+xcrun stapler staple "$bundle"
+xcrun stapler validate "$bundle"
+codesign --verify --deep --strict "$bundle"
+spctl --assess --type execute "$bundle"
+test "$(lipo -archs "$bundle/Contents/MacOS/Folio")" = arm64
+test "$(plutil -extract LSMinimumSystemVersion raw "$bundle/Contents/Info.plist")" = 14.0
+test "$(plutil -extract CFBundleIdentifier raw "$bundle/Contents/Info.plist")" = org.popomore.folio
+
+mkdir -p dist "$key_directory/dmg"
+archive="Folio-$FOLIO_VERSION.zip"
+dmg="dist/Folio-$FOLIO_VERSION.dmg"
+rm -f "dist/$archive" "$dmg"
+ditto -c -k --keepParent "$bundle" "dist/$archive"
+ditto "$bundle" "$key_directory/dmg/Folio.app"
+ln -s /Applications "$key_directory/dmg/Applications"
+hdiutil create -volname Folio -srcfolder "$key_directory/dmg" -format UDZO "$dmg"
+sign=(--force --timestamp --sign "$FOLIO_APPLE_SIGNING_IDENTITY")
+if [[ -n "${FOLIO_SIGNING_KEYCHAIN:-}" ]]; then sign+=(--keychain "$FOLIO_SIGNING_KEYCHAIN"); fi
+codesign "${sign[@]}" "$dmg"
+notarize "$dmg"
+xcrun stapler staple "$dmg"
+xcrun stapler validate "$dmg"
+codesign --verify "$dmg"
+scripts/macos-appcast "$FOLIO_VERSION" "dist/$archive" \
+  "https://github.com/$FOLIO_RELEASE_REPOSITORY/releases/download/v$FOLIO_VERSION/$archive" \
+  .release/notes.txt dist/appcast.xml "$key_directory/sparkle"

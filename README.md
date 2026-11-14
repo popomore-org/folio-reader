@@ -41,7 +41,7 @@ npm test --prefix renderer
 scripts/check-consumer
 ```
 
-本地预览的 bundle ID 为 `org.popomore.folio.preview`。正式直发的 Developer ID 签名、Hardened Runtime、公证、安装包和自动更新应在建立分发渠道时验收。没有启用自动更新或正式发布渠道。最低系统版本由链接目标声明，目前真机记录覆盖 macOS 27.0.1。
+本地预览使用独立的 `org.popomore.folio.preview` 应用标识。正式构建提供 Sparkle 自动更新，签名、公证和稳定渠道配置见 [macOS 自动更新](docs/macos-updates.md)。最低系统版本为 macOS 14，目前真机记录覆盖 macOS 27.0.1。
 
 ## Rust 集成
 

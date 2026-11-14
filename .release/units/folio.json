@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "unit": "folio",
+  "type": "assets",
+  "branch": "main",
+  "tag_prefix": "v",
+  "auto_on_main": false,
+  "base_version": "0.1.0",
+  "paths": [
+    ".github/workflows/release-macos.yml",
+    ".release/**",
+    "apps/macos/**",
+    "crates/**",
+    "renderer/**",
+    "scripts/**",
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain.toml",
+    ".node-version"
+  ]
+}

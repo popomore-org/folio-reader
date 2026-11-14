@@ -2,10 +2,15 @@ import AppKit
 import SwiftUI
 
 struct ReaderWindow: View {
+    let updates: FolioUpdates
     @ObservedObject var model: ReaderModel
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
+        workspace.onAppear { updates.showSettings = openSettings }
+    }
+
+    private var workspace: some View {
         VStack(spacing: 0) {
             HSplitView {
                 if model.sidebar {
@@ -88,7 +93,7 @@ struct ReaderPane: View {
                 WorkspaceRule()
             }
             if let tab = group.active {
-                TabDocument(tab: tab, appearance: model.appearance, follow: { model.follow($0, from: tab) })
+                TabDocument(tab: tab, appearance: model.appearance, setMediaActivity: model.setMediaActivity, follow: { model.follow($0, from: tab) })
                     .id(tab.id)
             } else {
                 ContentUnavailableView {
@@ -217,6 +222,7 @@ private struct TabButton: View {
 private struct TabDocument: View {
     @ObservedObject var tab: ReaderTab
     let appearance: Appearance
+    let setMediaActivity: (UUID, Bool) -> Void
     let follow: (URL) -> Void
     @FocusState private var findFocus: Bool
 
@@ -263,7 +269,8 @@ private struct TabDocument: View {
                 ReaderWeb(tab: tab, follow: follow, root: tab.location.root, path: tab.location.path,
                           html: preview.html, appearance: appearance)
             } else {
-                NativePreview(file: file, kind: document.kind, bytes: document.bytes)
+                NativePreview(file: file, kind: document.kind, bytes: document.bytes,
+                              playbackChanged: { setMediaActivity(tab.id, $0) })
             }
         }
     }
