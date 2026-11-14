@@ -103,9 +103,10 @@ struct ReaderPane: View {
                 } actions: {
                     Button("Open File…") { model.focus(pane); model.choose() }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(alignment: .center) {
             PaneFocus { model.focus(pane) }
         }
