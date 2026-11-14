@@ -9,7 +9,7 @@ pub use document::{
     Document, FileKind, Heading, Preview, Revision, render_markdown, sanitize_html,
 };
 #[cfg(feature = "git")]
-pub use history::{Commit, GitFile, Patch};
+pub use history::{Commit, GitChange, GitChanges, GitFile, Patch};
 pub use workspace::{Entry, Workspace};
 
 #[derive(Debug, thiserror::Error)]

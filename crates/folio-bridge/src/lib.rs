@@ -24,6 +24,10 @@ enum Request {
         root: String,
         path: String,
     },
+    Changes {
+        root: String,
+        path: String,
+    },
     Patch {
         root: String,
         path: String,
@@ -43,6 +47,7 @@ impl Request {
                 source,
             } => json!(Workspace::open(root)?.save(path, &revision, &source)?),
             Self::Git { root, path } => json!(Workspace::open(root)?.git_file(path)?),
+            Self::Changes { root, path } => json!(Workspace::open(root)?.git_changes(path)?),
             Self::Patch { root, path, commit } => {
                 json!(Workspace::open(root)?.git_patch(path, commit.as_deref())?)
             }

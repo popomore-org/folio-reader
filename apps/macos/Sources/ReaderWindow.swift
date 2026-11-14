@@ -3,205 +3,306 @@ import SwiftUI
 
 struct ReaderWindow: View {
     @ObservedObject var model: ReaderModel
-    @State private var query = ""
-    @FocusState private var findFocus: Bool
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        HStack(spacing: 0) {
+        VStack(spacing: 0) {
             HSplitView {
                 if model.sidebar {
-                    sidebar.frame(minWidth: 172, idealWidth: 222, maxWidth: 265)
+                    FolderSidebar(model: model)
+                        .frame(minWidth: 176, idealWidth: 224, maxWidth: 265)
                 }
-                reading.frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
-                if model.inspector {
-                    Inspector(model: model).frame(minWidth: 180, idealWidth: 234, maxWidth: 265)
+                if model.showingGit, let location = model.gitLocation {
+                    GitView(location: location, refreshID: model.gitRefresh)
+                        .id(location)
+                        .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    HSplitView {
+                        reader(.left)
+                        if model.split { reader(.right) }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                if model.inspector, !model.showingGit {
+                    Inspector(tab: model.active)
+                        .frame(minWidth: 150, idealWidth: 185, maxWidth: 230)
                 }
             }
+            Divider()
+            StatusBar(model: model)
         }
-        .navigationTitle(model.title)
-        .navigationSubtitle(model.path.map { "\(model.root?.lastPathComponent ?? "") / \($0)" } ?? "")
+        .background(Color(nsColor: .windowBackgroundColor))
+        .toolbarBackground(Color(nsColor: .windowBackgroundColor), for: .windowToolbar)
+        .toolbarBackground(.visible, for: .windowToolbar)
+        .navigationTitle(model.showingGit ? "Git" : model.active?.title ?? "Folio")
+        .navigationSubtitle(model.active?.location.displayPath ?? "")
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                Button {
-                    model.sidebar.toggle()
-                } label: { Label("Sidebar", systemImage: "sidebar.left") }.help("Toggle Sidebar")
-            }
-            ToolbarItem(placement: .navigation) {
-                Button(action: model.choose) {
-                    Label("Open", systemImage: "folder")
-                }
-                .help("Open File or Folder (⌘O)")
+                Button { model.sidebar.toggle() } label: {
+                    Label("Sidebar", systemImage: "sidebar.left")
+                }.help("Toggle Sidebar")
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                if model.editing {
-                    Button("Done") { _ = model.leaveDraft() }
-                    Button("Save") { model.save() }.buttonStyle(.borderedProminent).disabled(!model.dirty)
-                } else {
-                    Button(action: model.edit) { Label("Edit Source", systemImage: "square.and.pencil") }
-                        .help("Edit Source (⌘E)").disabled(model.document?.revision == nil)
-                    Button { model.finding.toggle() } label: { Label("Find", systemImage: "magnifyingglass") }
-                        .help("Find in Document (⌘F)").disabled(model.document?.preview == nil)
-                    Menu {
-                        Picker("Theme", selection: $model.appearance.theme) {
-                            ForEach(Theme.allCases) { theme in Text(theme.label).tag(theme) }
-                        }
-                        Picker("Typeface", selection: $model.appearance.serif) {
-                            Text("Serif").tag(true)
-                            Text("Sans Serif").tag(false)
-                        }
-                        Picker("Reading Width", selection: $model.appearance.width) {
-                            Text("Narrow").tag(570.0)
-                            Text("Standard").tag(700.0)
-                            Text("Wide").tag(920.0)
-                        }
-                        Divider()
-                        Button("Larger Text") { model.setSize(1) }
-                        Button("Smaller Text") { model.setSize(-1) }
-                        Button("Reset Text Size") { model.appearance.size = 18 }
-                    } label: {
-                        Label("Reading Appearance", systemImage: "textformat.size")
+                if let active = model.active, !model.showingGit {
+                    if active.editing {
+                        Button("Done") { _ = active.leaveDraft() }
+                        Button("Save") { active.save() }.disabled(!active.dirty)
+                    } else {
+                        Button("Edit Source", systemImage: "square.and.pencil", action: active.edit)
+                            .disabled(!active.canEdit)
+                            .help("Edit Source (⌘E)")
+                        Button("Find", systemImage: "magnifyingglass") { active.finding.toggle() }
+                            .disabled(!active.canFind)
+                            .help("Find in Document (⌘F)")
                     }
-                    .help("Reading Appearance").disabled(model.document?.preview == nil)
-                    Button { model.inspector.toggle() } label: { Label("Inspector", systemImage: "sidebar.right") }
-                        .help("Show Outline and Git History").disabled(model.path == nil)
                 }
+                Button(model.split ? "Merge Panes" : "Split Right",
+                       systemImage: model.split ? "rectangle" : "rectangle.split.2x1",
+                       action: model.toggleSplit)
+                    .help(model.split ? "Merge Panes" : "Split Right")
+                Button("Outline", systemImage: "sidebar.right") { model.inspector.toggle() }
+                    .help("Toggle Outline")
+                    .disabled(model.active?.document?.preview == nil || model.showingGit)
+                Button("Settings", systemImage: "gearshape") { openSettings() }
+                    .help("Settings (⌘,)")
             }
         }
         .alert("Folio", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }
-        .onChange(of: model.path) { _, _ in query = "" }
-        .onChange(of: model.editing) { _, editing in if editing { model.finding = false } }
     }
 
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 7) {
-                Image(systemName: "folder").foregroundStyle(.secondary)
-                Text(model.root?.lastPathComponent ?? "Files").font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1).help(model.root?.path ?? "Files")
-                Spacer(minLength: 4)
-                if model.root != nil {
-                    Button(action: model.refresh) { Image(systemName: "arrow.clockwise") }
-                        .buttonStyle(.borderless).foregroundStyle(.secondary).help("Reload Folder")
-                        .accessibilityLabel("Reload Folder")
-                }
-            }
-            .padding(.horizontal, 14).padding(.vertical, 12)
-            Divider()
-            if model.root == nil {
-                Spacer()
-                Text("Open a folder to browse its files.").font(.callout).foregroundStyle(.secondary)
-                    .padding(.horizontal, 16).frame(maxWidth: .infinity, alignment: .leading)
-                Spacer()
-            } else if model.rows.isEmpty {
-                Spacer()
-                Text("No visible files").foregroundStyle(.secondary).frame(maxWidth: .infinity)
-                Spacer()
-            } else {
-                List(selection: Binding(get: { model.path }, set: model.select)) {
-                    ForEach(model.rows) { row in
-                        if row.entry.directory {
-                            Button { model.toggle(row.entry.path) } label: {
-                                treeRow(row)
-                            }.buttonStyle(.plain)
-                                .accessibilityValue(model.expanded.contains(row.entry.path) ? "Expanded" : "Collapsed")
-                        } else {
-                            treeRow(row)
-                                .tag(row.entry.path)
-                                .contextMenu {
-                                    Button("Reveal in Finder") {
-                                        if let root = model.root, let url = Core.file(row.entry.path, in: root) {
-                                            NSWorkspace.shared.activateFileViewerSelecting([url])
-                                        }
-                                    }
-                                }
+    private func reader(_ pane: Pane) -> some View {
+        ReaderPane(model: model, pane: pane)
+            .frame(minWidth: 265, maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct ReaderPane: View {
+    @ObservedObject var model: ReaderModel
+    let pane: Pane
+
+    var body: some View {
+        let group = model.groups[pane] ?? ReaderModel.Group()
+        VStack(spacing: 0) {
+            if !group.tabs.isEmpty {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 3) {
+                            ForEach(group.tabs) { tab in
+                                TabButton(model: model, pane: pane, tab: tab, selected: group.selected == tab.id)
+                                    .id(tab.id)
+                            }
                         }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                    }
+                    .scrollIndicators(.hidden)
+                    .onChange(of: group.selected, initial: true) { _, selected in
+                        if let selected { proxy.scrollTo(selected) }
                     }
                 }
-                .listStyle(.sidebar)
+                .accessibilityLabel("\(pane.label) Tabs")
+                Divider()
             }
-        }
-        .background(.regularMaterial)
-    }
-
-    private func treeRow(_ row: ReaderModel.Row) -> some View {
-        HStack(spacing: 7) {
-            if row.entry.directory {
-                Image(systemName: model.expanded.contains(row.entry.path) ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.secondary).frame(width: 10)
-                    .accessibilityHidden(true)
+            if let tab = group.active {
+                TabDocument(tab: tab, appearance: model.appearance, follow: { model.follow($0, from: tab) })
+                    .id(tab.id)
             } else {
-                Color.clear.frame(width: 10, height: 1)
-            }
-            Image(systemName: row.entry.directory ? "folder" : (row.entry.kind ?? .other).icon)
-                .frame(width: 15).foregroundStyle(.secondary).accessibilityHidden(true)
-            Text(row.entry.name).lineLimit(1).truncationMode(.middle)
-            Spacer(minLength: 0)
-        }
-        .padding(.leading, CGFloat(min(12, row.depth) * 12))
-        .padding(.vertical, 3)
-        .contentShape(Rectangle())
-        .help(row.entry.path)
-    }
-
-    private var reading: some View {
-        VStack(spacing: 0) {
-            if model.finding, model.document?.preview != nil, !model.editing {
-                HStack(spacing: 8) {
-                    TextField("Find in document", text: $query)
-                        .textFieldStyle(.roundedBorder)
-                        .focused($findFocus)
-                        .onSubmit { model.web?.find(query) }
-                        .onAppear { findFocus = true }
-                    Button { model.web?.find(query, backwards: true) } label: {
-                        Label("Previous Match", systemImage: "chevron.up").labelStyle(.iconOnly)
-                    }.disabled(query.isEmpty)
-                    Button { model.web?.find(query) } label: {
-                        Label("Next Match", systemImage: "chevron.down").labelStyle(.iconOnly)
-                    }.disabled(query.isEmpty)
-                    Button("Done") { model.finding = false }
+                ContentUnavailableView {
+                    Label(model.split ? "Open a file in this pane" : "Open a file", systemImage: "doc.text")
+                } description: {
+                    Text(model.sidebar ? "Choose a file in the sidebar, or open one from disk." : "Show the sidebar or open a file from disk.")
+                } actions: {
+                    Button("Open File…") { model.focus(pane); model.choose() }
                 }
-                .padding(9).background(.bar).onExitCommand { model.finding = false }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(alignment: .center) {
+            PaneFocus { model.focus(pane) }
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+        .overlay(alignment: .top) {
+            if model.split, model.focusedPane == pane {
+                Rectangle().fill(Color.accentColor).frame(height: 1)
+                    .accessibilityHidden(true).allowsHitTesting(false)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(pane.label) Reader")
+    }
+}
+
+private struct TabButton: View {
+    let model: ReaderModel
+    let pane: Pane
+    @ObservedObject var tab: ReaderTab
+    let selected: Bool
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Button {
+                model.activate(tab, in: pane)
+            } label: {
+                HStack(spacing: 5) {
+                    FileIcon(name: tab.title, kind: tab.document?.kind)
+                    Text(tab.title).lineLimit(1).truncationMode(.middle)
+                }
+                .padding(.leading, 7)
+                .padding(.vertical, 5)
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            Button { model.close(tab, in: pane) } label: {
+                Image(systemName: tab.dirty ? "circle.fill" : "xmark")
+                    .font(.system(size: tab.dirty ? 6 : 8, weight: .semibold))
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Close \(tab.title)")
+        }
+        .font(.callout)
+        .frame(maxWidth: 220)
+        .background(selected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.13) : .clear,
+                    in: RoundedRectangle(cornerRadius: 5))
+        .help(tab.location.displayPath)
+        .contextMenu {
+            Button("Move to \(pane.other.label) Pane") { model.move(tab, from: pane, to: pane.other) }
+            if let file = tab.location.url {
+                OpenWithMenu(file: file, model: model)
+            }
+            Divider()
+            Button("Close Tab") { model.close(tab, in: pane) }
+        }
+    }
+}
+
+private struct TabDocument: View {
+    @ObservedObject var tab: ReaderTab
+    let appearance: Appearance
+    let follow: (URL) -> Void
+    @FocusState private var findFocus: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if tab.finding, tab.canFind {
+                HStack(spacing: 7) {
+                    TextField("Find in document", text: $tab.query)
+                        .textFieldStyle(.roundedBorder).focused($findFocus)
+                        .onAppear { findFocus = true }
+                        .onSubmit { tab.web?.find(tab.query) }
+                    Button("Previous Match", systemImage: "chevron.up") { tab.web?.find(tab.query, backwards: true) }
+                        .labelStyle(.iconOnly).disabled(tab.query.isEmpty)
+                    Button("Next Match", systemImage: "chevron.down") { tab.web?.find(tab.query) }
+                        .labelStyle(.iconOnly).disabled(tab.query.isEmpty)
+                    Button("Done") { tab.finding = false }
+                }
+                .padding(8)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .onExitCommand { tab.finding = false }
                 Divider()
             }
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .alert("Folio", isPresented: Binding(get: { tab.error != nil }, set: { if !$0 { tab.error = nil } })) {
+            Button("OK") { tab.error = nil }
+        } message: { Text(tab.error ?? "") }
     }
 
     @ViewBuilder
     private var content: some View {
-        if model.loading {
-            ProgressView("Opening \(model.title)…").controlSize(.small)
-        } else if let error = model.loadError {
+        if tab.loading {
+            ProgressView("Opening \(tab.title)…").controlSize(.small)
+        } else if let error = tab.loadError {
             ContentUnavailableView {
                 Label("Couldn’t open this file", systemImage: "exclamationmark.circle")
             } description: { Text(error) } actions: {
-                Button("Reload from Disk", action: model.refresh)
+                Button("Reload from Disk", action: tab.load)
             }
-        } else if model.editing {
-            SourceEditor(text: $model.draft)
-        } else if let document = model.document, let root = model.root,
-                  let path = model.path, let file = model.file {
+        } else if tab.editing {
+            SourceEditor(text: $tab.draft)
+        } else if let document = tab.document, let file = tab.location.url {
             if let preview = document.preview {
-                ReaderWeb(model: model, root: root, path: path, html: preview.html, appearance: model.appearance)
+                ReaderWeb(tab: tab, follow: follow, root: tab.location.root, path: tab.location.path,
+                          html: preview.html, appearance: appearance)
             } else {
                 NativePreview(file: file, kind: document.kind, bytes: document.bytes)
-                    .id(file)
-            }
-        } else if model.root != nil {
-            ContentUnavailableView("Select a file", systemImage: "doc.text.magnifyingglass",
-                                   description: Text("Choose a document or media file in the sidebar."))
-        } else {
-            ContentUnavailableView {
-                Label("Open a file or folder", systemImage: "book")
-            } description: {
-                Text("Read documents and browse their neighboring files.")
-            } actions: {
-                Button("Open…", action: model.choose).buttonStyle(.borderedProminent)
             }
         }
+    }
+}
+
+/// The reader contains AppKit and WebKit views, so track clicks without taking
+/// their focus, selection or pointer events.
+private struct PaneFocus: NSViewRepresentable {
+    let focus: () -> Void
+
+    func makeNSView(context: Context) -> Monitor { Monitor() }
+    func updateNSView(_ view: Monitor, context: Context) { view.focus = focus }
+
+    @MainActor
+    final class Monitor: NSView {
+        var focus: (() -> Void)?
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+                if let self, event.window === window, bounds.contains(convert(event.locationInWindow, from: nil)) {
+                    focus?()
+                }
+                return event
+            }
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+}
+
+struct StatusBar: View {
+    @ObservedObject var model: ReaderModel
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button {
+                model.showingGit.toggle()
+            } label: {
+                Label(model.showingGit ? "Back to Reading" : "Git", systemImage: "arrow.triangle.branch")
+            }
+            .buttonStyle(.borderless)
+            .disabled(model.gitLocation == nil)
+            .help(model.showingGit ? "Back to Reading" : "Open Git View")
+            if let tab = model.active {
+                Text(tab.location.displayPath).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 6)
+                Text(state(tab))
+                if let document = tab.document {
+                    Text(document.kind.label)
+                    Text(ByteCountFormatter.string(fromByteCount: document.bytes, countStyle: .file))
+                }
+                if model.split { Text(model.focusedPane.label + " Pane") }
+            } else {
+                Spacer()
+                Text("\(model.folders.count) \(model.folders.count == 1 ? "folder" : "folders")")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .frame(height: 28)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Status Bar")
+    }
+
+    private func state(_ tab: ReaderTab) -> String {
+        if tab.loading { return "Opening…" }
+        if tab.loadError != nil { return "Unavailable" }
+        if tab.dirty { return "Unsaved" }
+        return tab.editing ? "Editing" : "Reading"
     }
 }

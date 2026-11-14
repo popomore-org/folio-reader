@@ -3,9 +3,21 @@ import Foundation
 enum FileKind: String, Decodable {
     case markdown, text, html, rtf, pdf, image, audio, video, table, mermaid, vega, other
 
+    var label: String {
+        switch self {
+        case .html: "HTML"
+        case .pdf: "PDF"
+        case .rtf: "RTF"
+        case .vega: "Vega-Lite"
+        default: rawValue.capitalized
+        }
+    }
+
     var icon: String {
         switch self {
-        case .markdown, .text, .html, .rtf: "doc.text"
+        case .markdown: "text.book.closed"
+        case .html: "globe"
+        case .text, .rtf: "doc.text"
         case .pdf: "doc.richtext"
         case .image: "photo"
         case .audio: "waveform"

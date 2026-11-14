@@ -4,25 +4,27 @@ import UniformTypeIdentifiers
 import WebKit
 
 struct ReaderWeb: NSViewRepresentable {
-    @ObservedObject var model: ReaderModel
+    @ObservedObject var tab: ReaderTab
+    let follow: (URL) -> Void
     let root: URL
     let path: String
     let html: String
     let appearance: Appearance
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(model: model, root: root)
+        Coordinator(tab: tab, root: root, follow: follow)
     }
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
         config.setURLSchemeHandler(context.coordinator, forURLScheme: "folio")
+        config.userContentController.add(context.coordinator, name: "folioScroll")
         let view = WKWebView(frame: .zero, configuration: config)
         view.navigationDelegate = context.coordinator
         view.setValue(false, forKey: "drawsBackground")
         context.coordinator.view = view
-        model.web = context.coordinator
+        tab.web = context.coordinator
         return view
     }
 
@@ -31,14 +33,16 @@ struct ReaderWeb: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ view: WKWebView, coordinator: Coordinator) {
-        if coordinator.model?.web === coordinator {
-            coordinator.model?.web = nil
+        view.configuration.userContentController.removeScriptMessageHandler(forName: "folioScroll")
+        if coordinator.tab?.web === coordinator {
+            coordinator.tab?.web = nil
         }
     }
 
     @MainActor
-    final class Coordinator: NSObject, WKURLSchemeHandler, WKNavigationDelegate {
-        weak var model: ReaderModel?
+    final class Coordinator: NSObject, WKURLSchemeHandler, WKNavigationDelegate, WKScriptMessageHandler {
+        weak var tab: ReaderTab?
+        let follow: (URL) -> Void
         weak var view: WKWebView?
         private var root: URL
         private var path = ""
@@ -48,9 +52,10 @@ struct ReaderWeb: NSViewRepresentable {
         private var headingID: String?
         private var navigation: WKNavigation?
 
-        init(model: ReaderModel, root: URL) {
-            self.model = model
+        init(tab: ReaderTab, root: URL, follow: @escaping (URL) -> Void) {
+            self.tab = tab
             self.root = root
+            self.follow = follow
         }
 
         func update(root: URL, path: String, html: String, appearance: Appearance) {
@@ -61,8 +66,8 @@ struct ReaderWeb: NSViewRepresentable {
                 self.path = path
                 self.html = html
                 pending = true
-                headingID = model?.pendingFragment
-                model?.pendingFragment = nil
+                headingID = tab?.pendingFragment
+                tab?.pendingFragment = nil
                 navigation = view?.load(URLRequest(url: URL(string: "folio://reader/index.html")!))
             } else if change && !pending {
                 applyAppearance()
@@ -102,12 +107,20 @@ struct ReaderWeb: NSViewRepresentable {
             if let headingID {
                 self.headingID = nil
                 heading(headingID)
+            } else if let y = tab?.scrollOffset, y > 0 {
+                webView.callAsyncJavaScript("window.scrollTo(0, y)", arguments: ["y": y], in: nil, in: .page)
+            }
+        }
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if !pending, message.frameInfo.isMainFrame, let offset = message.body as? Double, offset.isFinite {
+                tab?.scrollOffset = max(0, offset)
             }
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             if navigation == self.navigation && (error as NSError).code != NSURLErrorCancelled {
-                model?.loadError = error.localizedDescription
+                tab?.loadError = error.localizedDescription
             }
         }
 
@@ -119,7 +132,7 @@ struct ReaderWeb: NSViewRepresentable {
             }
             if action.navigationType == .linkActivated {
                 if url.scheme == "folio", url.host == "files" {
-                    model?.follow(url)
+                    follow(url)
                 } else if ["https", "http", "mailto"].contains(url.scheme ?? "") {
                     NSWorkspace.shared.open(url)
                 }

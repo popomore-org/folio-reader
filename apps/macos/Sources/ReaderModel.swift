@@ -1,219 +1,97 @@
 import AppKit
+import Combine
 import SwiftUI
+import UniformTypeIdentifiers
 
-enum Theme: String, CaseIterable, Identifiable {
-    case system, light, paper, dark
-    var id: String { rawValue }
+enum Pane: String, CaseIterable {
+    case left, right
+
+    var other: Pane { self == .left ? .right : .left }
     var label: String { rawValue.capitalized }
 }
 
-struct Appearance: Equatable {
-    var theme: Theme = .system
-    var size = 18.0
-    var width = 700.0
-    var serif = true
+struct FileLocation: Hashable, Sendable {
+    let root: URL
+    let path: String
 
-    init() {
-        let defaults = UserDefaults.standard
-        theme = Theme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
-        size = defaults.object(forKey: "textSize") as? Double ?? 18
-        width = defaults.object(forKey: "readerWidth") as? Double ?? 700
-        serif = defaults.object(forKey: "serif") as? Bool ?? true
-    }
-
-    func persist() {
-        let defaults = UserDefaults.standard
-        defaults.set(theme.rawValue, forKey: "theme")
-        defaults.set(size, forKey: "textSize")
-        defaults.set(width, forKey: "readerWidth")
-        defaults.set(serif, forKey: "serif")
-    }
+    var name: String { String(path.split(separator: "/").last ?? "") }
+    var url: URL? { Core.file(path, in: root) }
+    var displayPath: String { "\(root.lastPathComponent) / \(path)" }
 }
 
 @MainActor
-final class ReaderModel: ObservableObject {
-    struct Row: Identifiable {
-        let entry: Entry
-        let depth: Int
-        var id: String { entry.id }
-    }
-
-    @Published private(set) var root: URL?
-    @Published private(set) var path: String?
+final class ReaderTab: ObservableObject, Identifiable {
+    nonisolated let id = UUID()
+    let location: FileLocation
     @Published private(set) var document: Document?
     @Published private(set) var loading = false
-    @Published private(set) var entries: [String: [Entry]] = [:]
-    @Published private(set) var expanded: Set<String> = []
     @Published private(set) var editing = false
     @Published var draft = ""
-    @Published var error: String?
     @Published var loadError: String?
-    @Published var sidebar = true
-    @Published var inspector = false
+    @Published var error: String?
     @Published var finding = false
-    @Published var appearance = Appearance() { didSet { appearance.persist() } }
+    @Published var query = ""
 
-    var web: ReaderWeb.Coordinator?
-    private var token = UUID()
+    weak var web: ReaderWeb.Coordinator?
+    var pendingFragment: String?
+    var scrollOffset = 0.0
+    private var readTask: Task<Void, Never>?
 
-    var dirty: Bool { editing && (document?.source ?? "") != draft }
-    var file: URL? {
-        guard let root, let path else { return nil }
-        return Core.file(path, in: root)
-    }
+    init(location: FileLocation) { self.location = location }
 
-    var title: String {
-        path.flatMap { $0.split(separator: "/").last.map(String.init) } ?? root?.lastPathComponent ?? "Folio"
-    }
+    var dirty: Bool { editing && document?.source != draft }
+    var title: String { location.name }
+    var canFind: Bool { document?.preview != nil && !editing }
+    var canEdit: Bool { document?.revision != nil && !editing }
 
-    var rows: [Row] {
-        func descend(_ folder: String, _ depth: Int) -> [Row] {
-            (entries[folder] ?? []).flatMap { entry in
-                let row = Row(entry: entry, depth: depth)
-                return expanded.contains(entry.path) ? [row] + descend(entry.path, depth + 1) : [row]
-            }
-        }
-        return descend("", 0)
-    }
-
-    func choose() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Open"
-        if let window = NSApp.keyWindow {
-            panel.beginSheetModal(for: window) { [weak self] response in
-                if response == .OK, let url = panel.url { self?.open(url) }
-            }
-        } else if panel.runModal() == .OK, let url = panel.url {
-            open(url)
-        }
-    }
-
-    func open(_ url: URL) {
-        guard url.isFileURL, leaveDraft() else { return }
-        do {
-            let canonical = url.resolvingSymlinksInPath().standardizedFileURL
-            let isFolder = try canonical.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true
-            let directory = isFolder ? canonical : canonical.deletingLastPathComponent()
-            let children: [Entry] = try Core.request("list", root: directory, path: "") ?? []
-            token = UUID()
-            root = directory
-            entries = ["": children]
-            expanded = []
-            pendingFragment = nil
-            path = nil
-            document = nil
-            loading = false
-            loadError = nil
-            if !isFolder {
-                load(canonical.lastPathComponent)
-            }
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-
-    func toggle(_ folder: String) {
-        if expanded.remove(folder) != nil { return }
-        guard let root else { return }
-        do {
-            entries[folder] = try Core.request("list", root: root, path: folder) ?? []
-            expanded.insert(folder)
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-
-    func select(_ item: String?) {
-        guard let item, path != item, leaveDraft() else { return }
-        pendingFragment = nil
-        load(item)
-    }
-
-    func refresh() {
-        guard let root, leaveDraft() else { return }
-        do {
-            entries[""] = try Core.request("list", root: root, path: "") as [Entry]?
-            for folder in expanded {
-                entries[folder] = try Core.request("list", root: root, path: folder) as [Entry]?
-            }
-        } catch {
-            self.error = error.localizedDescription
-        }
-        if let path { load(path) }
-    }
-
-    private func load(_ item: String) {
-        guard let root else { return }
-        token = UUID()
-        let current = token
-        path = item
+    func load() {
+        readTask?.cancel()
+        let location = location
         editing = false
         draft = ""
         document = nil
         loadError = nil
         loading = true
-        Task {
-            let response = await Task.detached(priority: .userInitiated) {
-                Result<Document?, Error> { try Core.request("read", root: root, path: item) }
+        readTask = Task { [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                Result<Document?, Error> { try Core.request("read", root: location.root, path: location.path) }
             }.value
-            guard current == token else { return }
+            guard !Task.isCancelled, let self else { return }
             loading = false
-            switch response {
-            case .success(let loaded):
-                document = loaded
+            switch result {
+            case .success(let document):
+                self.document = document
+                if document == nil { loadError = "The reader did not return a document." }
             case .failure(let error):
                 loadError = error.localizedDescription
             }
         }
     }
 
-    func follow(_ url: URL) {
-        guard let root else { return }
-        let relative = String(url.path.dropFirst())
-        guard let file = Core.file(relative, in: root), FileManager.default.fileExists(atPath: file.path) else { return }
-        let pieces = relative.split(separator: "/")
-        var parent = ""
-        for piece in pieces.dropLast() {
-            parent = parent.isEmpty ? String(piece) : parent + "/" + piece
-            if !expanded.contains(parent) { toggle(parent) }
-        }
-        if relative == path, let fragment = url.fragment {
-            web?.heading(fragment.removingPercentEncoding ?? fragment)
-        } else {
-            guard leaveDraft() else { return }
-            pendingFragment = url.fragment?.removingPercentEncoding
-            load(relative)
-        }
-    }
-
-    var pendingFragment: String?
-
     func edit() {
-        guard let document, document.revision != nil, let source = document.source else { return }
+        guard canEdit, let source = document?.source else { return }
+        finding = false
         draft = source
         editing = true
     }
 
     @discardableResult
     func save() -> Bool {
-        guard editing, let root, let path, let revision = document?.revision else { return false }
-        if dirty {
-            do {
-                let result: String? = try Core.request("save", root: root, path: path,
-                                                       values: ["revision": revision, "source": draft])
-                guard result != nil else { throw CoreError(message: "The file could not be saved.") }
-            } catch {
-                self.error = error.localizedDescription
-                return false
-            }
-            load(path)
-        } else {
+        guard editing, let revision = document?.revision else { return false }
+        if !dirty {
             editing = false
+            return true
         }
-        return true
+        do {
+            let result: String? = try Core.request("save", root: location.root, path: location.path,
+                                                   values: ["revision": revision, "source": draft])
+            guard result != nil else { throw CoreError(message: "The file could not be saved.") }
+            load()
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
     }
 
     func leaveDraft() -> Bool {
@@ -237,8 +115,301 @@ final class ReaderModel: ObservableObject {
         default: return false
         }
     }
+}
 
-    func setSize(_ delta: Double) {
-        appearance.size = min(30, max(13, appearance.size + delta))
+@MainActor
+final class ReaderModel: ObservableObject {
+    struct Group {
+        var tabs: [ReaderTab] = []
+        var selected: UUID?
+        var active: ReaderTab? { tabs.first { $0.id == selected } }
+
+        mutating func remove(_ tab: ReaderTab) {
+            guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+            tabs.remove(at: index)
+            if selected == tab.id { selected = tabs.isEmpty ? nil : tabs[min(index, tabs.count - 1)].id }
+        }
+    }
+
+    struct Folder: Identifiable {
+        let url: URL
+        var entries: [String: [Entry]] = [:]
+        var expanded: Set<String> = []
+        var failures: [String: String] = [:]
+        var id: URL { url }
+        var name: String { url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent }
+    }
+
+    private static let foldersKey = "savedWorkspaceFolders"
+    @Published private(set) var folders: [Folder] = []
+    @Published private(set) var groups: [Pane: Group] = [.left: Group()]
+    @Published private(set) var focusedPane: Pane = .left
+    @Published private(set) var selectedRoot: URL?
+    @Published var error: String?
+    @Published var sidebar = true
+    @Published var inspector = false
+    @Published var showingGit = false
+    @Published var appearance = Appearance() { didSet { appearance.persist() } }
+    @Published private(set) var gitRefresh = UUID()
+
+    private var observation: AnyCancellable?
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        folders = (defaults.stringArray(forKey: Self.foldersKey) ?? []).map {
+            Folder(url: URL(fileURLWithPath: $0, isDirectory: true))
+        }
+        selectedRoot = folders.first?.url
+        if let selectedRoot { expand(root: selectedRoot, path: "") }
+    }
+
+    var active: ReaderTab? { groups[focusedPane]?.active }
+    var split: Bool { groups[.right] != nil }
+    var gitLocation: FileLocation? {
+        active?.location ?? selectedRoot.map { FileLocation(root: $0, path: "") }
+    }
+
+    func focus(_ pane: Pane) {
+        guard focusedPane != pane, groups[pane] != nil else { return }
+        focusedPane = pane
+        observeActive()
+    }
+
+    func activate(_ tab: ReaderTab, in pane: Pane) {
+        guard var group = groups[pane], group.tabs.contains(where: { $0.id == tab.id }) else { return }
+        if group.selected != tab.id {
+            group.selected = tab.id
+            groups[pane] = group
+        }
+        focusedPane = pane
+        selectedRoot = folders.contains { $0.url == tab.location.root } ? tab.location.root : selectedRoot
+        showingGit = false
+        observeActive()
+    }
+
+    func cycle(_ offset: Int) {
+        guard let group = groups[focusedPane], group.tabs.count > 1,
+              let index = group.tabs.firstIndex(where: { $0.id == group.selected }) else { return }
+        activate(group.tabs[(index + offset + group.tabs.count) % group.tabs.count], in: focusedPane)
+    }
+
+    func open(_ location: FileLocation, in pane: Pane? = nil, fragment: String? = nil) {
+        let target = pane ?? focusedPane
+        let url = location.url
+        guard url != nil else { error = "This file is outside the selected folder."; return }
+        for source in Pane.allCases {
+            guard let tab = groups[source]?.tabs.first(where: { $0.location == location || (url != nil && $0.location.url == url) }) else { continue }
+            if pane != nil, source != target {
+                move(tab, from: source, to: target)
+            } else {
+                activate(tab, in: source)
+            }
+            if let fragment {
+                if let web = tab.web { web.heading(fragment) }
+                else { tab.pendingFragment = fragment }
+            }
+            return
+        }
+        let tab = ReaderTab(location: location)
+        tab.pendingFragment = fragment
+        var group = groups[target] ?? Group()
+        group.tabs.append(tab)
+        groups[target] = group
+        activate(tab, in: target)
+        tab.load()
+    }
+
+    func move(_ tab: ReaderTab, from source: Pane, to target: Pane) {
+        guard source != target, var origin = groups[source],
+              origin.tabs.contains(where: { $0.id == tab.id }) else { return }
+        origin.remove(tab)
+        var destination = groups[target] ?? Group()
+        destination.tabs.append(tab)
+        groups[source] = origin
+        groups[target] = destination
+        activate(tab, in: target)
+    }
+
+    func close(_ tab: ReaderTab, in pane: Pane) {
+        guard var group = groups[pane], tab.leaveDraft() else { return }
+        group.remove(tab)
+        groups[pane] = group
+        observeActive()
+    }
+
+    func closeActive() {
+        if showingGit { showingGit = false }
+        else if let active { close(active, in: focusedPane) }
+        else { NSApp.keyWindow?.performClose(nil) }
+    }
+
+    func toggleSplit() {
+        showingGit = false
+        if let right = groups[.right], var left = groups[.left] {
+            let selected = active?.id
+            left.tabs.append(contentsOf: right.tabs)
+            left.selected = selected ?? left.selected ?? right.selected
+            groups = [.left: left]
+            focusedPane = .left
+        } else {
+            groups[.right] = Group()
+            focusedPane = .right
+            sidebar = true
+        }
+        observeActive()
+    }
+
+    func protectAllDrafts() -> Bool {
+        for pane in Pane.allCases {
+            for tab in groups[pane]?.tabs ?? [] where tab.dirty {
+                activate(tab, in: pane)
+                guard tab.leaveDraft() else { return false }
+            }
+        }
+        return true
+    }
+
+    func reload() {
+        if showingGit {
+            gitRefresh = UUID()
+        } else if let active, active.leaveDraft() {
+            active.load()
+            gitRefresh = UUID()
+        } else if active == nil, let selectedRoot {
+            refreshFolder(selectedRoot)
+        }
+    }
+
+    func follow(_ url: URL, from tab: ReaderTab) {
+        let relative = String(url.path.dropFirst())
+        let location = FileLocation(root: tab.location.root, path: relative)
+        guard let file = location.url, FileManager.default.fileExists(atPath: file.path) else { return }
+        if let pane = Pane.allCases.first(where: { groups[$0]?.tabs.contains { $0.id == tab.id } == true }) {
+            focus(pane)
+        }
+        let fragment = url.fragment?.removingPercentEncoding
+        if location == tab.location, let fragment {
+            tab.web?.heading(fragment)
+        } else {
+            open(location, fragment: fragment)
+        }
+    }
+
+    func choose(foldersOnly: Bool = false) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = !foldersOnly
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.prompt = foldersOnly ? "Add" : "Open"
+        if let window = NSApp.keyWindow {
+            panel.beginSheetModal(for: window) { [weak self] response in
+                if response == .OK { self?.openURLs(panel.urls) }
+            }
+        } else if panel.runModal() == .OK {
+            openURLs(panel.urls)
+        }
+    }
+
+    func openURLs(_ urls: [URL]) {
+        for url in urls where url.isFileURL {
+            let canonical = url.resolvingSymlinksInPath().standardizedFileURL
+            do {
+                if try canonical.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true {
+                    addFolder(canonical)
+                    continue
+                }
+                let parent = canonical.deletingLastPathComponent()
+                let root = folders.map(\.url)
+                    .filter { canonical.pathComponents.starts(with: $0.pathComponents) }
+                    .max { $0.pathComponents.count < $1.pathComponents.count } ?? parent
+                addFolder(root)
+                let relative = canonical.pathComponents.dropFirst(root.pathComponents.count).joined(separator: "/")
+                open(FileLocation(root: root, path: relative))
+            } catch { self.error = error.localizedDescription }
+        }
+    }
+
+    func toggleFolder(root: URL, path: String) {
+        guard let index = folders.firstIndex(where: { $0.url == root }) else { return }
+        selectedRoot = root
+        if folders[index].expanded.contains(path) {
+            folders[index].expanded.remove(path)
+        } else {
+            expand(root: root, path: path)
+        }
+    }
+
+    func removeFolder(_ root: URL) {
+        let tabs = Pane.allCases.flatMap { pane in
+            (groups[pane]?.tabs ?? []).filter { $0.location.root == root }.map { (pane, $0) }
+        }
+        for (pane, tab) in tabs where tab.dirty {
+            activate(tab, in: pane)
+            guard tab.leaveDraft() else { return }
+        }
+        for (pane, tab) in tabs { close(tab, in: pane) }
+        folders.removeAll { $0.url == root }
+        if selectedRoot == root { selectedRoot = folders.first?.url }
+        persistFolders()
+    }
+
+    func refreshFolder(_ root: URL) {
+        guard let folder = folders.first(where: { $0.url == root }) else { return }
+        for path in folder.expanded.union([""]) { expand(root: root, path: path) }
+        gitRefresh = UUID()
+    }
+
+    func openExternally(_ file: URL, application: URL? = nil) {
+        if let application {
+            NSWorkspace.shared.open([file], withApplicationAt: application, configuration: .init()) { [weak self] _, error in
+                if let error { Task { @MainActor in self?.error = error.localizedDescription } }
+            }
+        } else if !NSWorkspace.shared.open(file) {
+            error = "No application could open \(file.lastPathComponent)."
+        }
+    }
+
+    func chooseApplication(for file: URL) {
+        guard let window = NSApp.keyWindow else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
+        panel.prompt = "Open"
+        panel.message = "Choose an application to open \(file.lastPathComponent)."
+        panel.beginSheetModal(for: window) { [weak self] response in
+            if response == .OK, let application = panel.url { self?.openExternally(file, application: application) }
+        }
+    }
+
+    private func addFolder(_ root: URL) {
+        if !folders.contains(where: { $0.url == root }) {
+            folders.append(Folder(url: root))
+            persistFolders()
+        }
+        selectedRoot = root
+        if !folders.contains(where: { $0.url == root && $0.expanded.contains("") }) {
+            expand(root: root, path: "")
+        }
+    }
+
+    private func persistFolders() {
+        defaults.set(folders.map(\.url.path), forKey: Self.foldersKey)
+    }
+
+    private func expand(root: URL, path: String) {
+        guard let index = folders.firstIndex(where: { $0.url == root }) else { return }
+        folders[index].expanded.insert(path)
+        do {
+            folders[index].entries[path] = try Core.request("list", root: root, path: path) as [Entry]?
+            folders[index].failures.removeValue(forKey: path)
+        } catch {
+            folders[index].entries.removeValue(forKey: path)
+            folders[index].failures[path] = error.localizedDescription
+        }
+    }
+
+    private func observeActive() {
+        observation = active?.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
     }
 }

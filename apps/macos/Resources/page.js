@@ -17,3 +17,12 @@ document.addEventListener("click", (event) => {
     } catch { /* Ignore malformed fragments. */ }
   }
 });
+
+let scrollFrame;
+window.addEventListener("scroll", () => {
+  if (scrollFrame !== undefined) return;
+  scrollFrame = requestAnimationFrame(() => {
+    scrollFrame = undefined;
+    window.webkit?.messageHandlers.folioScroll.postMessage(window.scrollY);
+  });
+}, { passive: true });

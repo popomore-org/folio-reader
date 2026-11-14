@@ -5,13 +5,17 @@
 | 参考 | 在共同任务中的优势 | Folio 的实现 |
 | --- | --- | --- |
 | Typora | 文件树、大纲和正文整合，Markdown 呈现与编辑紧密衔接。 | 保留文件树与按需大纲。默认阅读，单独进入源文件编辑，以清楚地显示保存边界。[Typora 2.0](https://v2.typora.io/) |
-| Obsidian | 阅读视图、文件浏览器和成熟的社区主题入口适合管理长期笔记。 | 浏览普通文件夹，阅读外观直接放在工具栏。无需建立笔记库。[Obsidian 设置](https://obsidian.md/help/settings) · [外观](https://obsidian.md/help/appearance) |
+| Obsidian | 阅读视图、文件浏览器和成熟的社区主题入口适合管理长期笔记。 | 浏览普通文件夹，阅读外观集中于 Settings。无需建立笔记库。[Obsidian 设置](https://obsidian.md/help/settings) · [外观](https://obsidian.md/help/appearance) |
 | MarkText | MIT 开源的 Markdown 编辑器，提供 GitHub 风格 Markdown、源码和专注模式。调研时约 6.4 万收藏。 | 沿用明确的源码入口和可收起导航的专注阅读，保留无写入的默认视图。[MarkText](https://github.com/marktext/marktext) |
 | Readest / Foliate | 开源电子书阅读器，强调字体、阅读布局与主题。调研时分别约 2.6 万与 8.9 千收藏。 | 将字号、字体、页宽、暖纸色做成即时可调项目。正文使用有中文回退的衬线字体，导航和数据表用系统字体。[Readest](https://github.com/readest/readest) · [Foliate](https://github.com/johnfactotum/foliate) |
 | KOReader | 开源长文阅读器，提供字号、行距与对比度等调整。调研时约 3.1 万收藏。 | 保留正文与导航的视觉区分。阅读排版从可调宽度和 1.72 行高开始。[KOReader](https://github.com/koreader/koreader) · [用户指南](https://koreader.rocks/koreader-user-guide.pdf) |
-| VS Code | 文件旁可查看变更和时间线，方便理解当前路径的版本。 | 历史放入独立检查器，呈现暂存区、工作树、提交和可复制的补丁。[VS Code Source Control](https://code.visualstudio.com/docs/sourcecontrol/overview) |
+| VS Code | 文件旁可查看变更和时间线，方便理解当前路径的版本。 | 文件按标签和两栏组织，底栏进入独立 Git 视图，工作区变更和文件历史各有列表，旁边显示可复制的补丁。[VS Code Source Control](https://code.visualstudio.com/docs/sourcecontrol/overview) |
 
-界面按 macOS 侧栏、主阅读区和检查器分层。文件名和相对位置显示在标题栏，打开目录后从选文件开始。文档加载、空目录、无法访问、解码失败、外部版本冲突分别反馈。正文主题与系统窗口外观独立，浅色与暖纸服务日间阅读，深色用于低环境亮度。局部控件沿用原生图标并带文字辅助标签。
+界面按 macOS 侧栏、主阅读区和大纲分层。侧栏、标题栏与状态栏复用系统窗口底色，文件类型以单色图形区分。文件名和相对位置显示在标题栏，打开目录后从选文件开始。文档加载、空目录、无法访问、解码失败、外部版本冲突分别反馈。正文主题与系统窗口外观独立，浅色与暖纸服务日间阅读，深色用于低环境亮度。局部控件沿用原生图标并带文字辅助标签。
+
+## 文件图标与两栏
+
+VS Code 的文件图标主题将文件名、扩展名和语言 ID 映射到图标，编辑器分栏各自维护标签。Material Icon Theme 有 MIT 许可、文件名和扩展名映射及灰度选项；引入整套主题会增加素材和更新维护。本版沿用其匹配顺序的思路，按典型文件名、扩展名和预览类别映射到系统 SF Symbols。图标使用同一色调，选中状态通过行背景区分。[VS Code 界面](https://code.visualstudio.com/docs/editing/getting-started/userinterface) · [File Icon Theme](https://code.visualstudio.com/api/extension-guides/file-icon-theme) · [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme)
 
 ## 主题互操作
 

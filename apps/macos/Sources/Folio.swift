@@ -9,30 +9,30 @@ struct Folio: App {
     var body: some Scene {
         WindowGroup("Folio") {
             ReaderWindow(model: model)
-                .frame(minWidth: 670, minHeight: 440)
+                .frame(minWidth: 910, minHeight: 500)
                 .onAppear {
                     delegate.model = model
-                    if let url = delegate.pending {
-                        delegate.pending = nil
-                        model.open(url)
-                    }
+                    model.openURLs(delegate.pending)
+                    delegate.pending = []
                 }
                 .background(WindowOwner(model: model))
         }
         .defaultSize(width: 1130, height: 760)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Open…", action: model.choose).keyboardShortcut("o")
+                Button("Open…") { model.choose() }.keyboardShortcut("o")
+                Button("Add Folders…") { model.choose(foldersOnly: true) }
+                Button("Close Tab", action: model.closeActive).keyboardShortcut("w").disabled(model.active == nil && !model.showingGit)
             }
             CommandGroup(replacing: .saveItem) {
-                Button("Save") { model.save() }.keyboardShortcut("s").disabled(!model.editing)
-                Button("Reload from Disk", action: model.refresh).keyboardShortcut("r").disabled(model.root == nil)
+                Button("Save") { model.active?.save() }.keyboardShortcut("s").disabled(model.active?.editing != true || model.showingGit)
+                Button("Reload from Disk", action: model.reload).keyboardShortcut("r").disabled(model.gitLocation == nil)
             }
             CommandGroup(after: .textEditing) {
-                Button("Find in Document") { model.finding = true }
-                    .keyboardShortcut("f").disabled(model.document?.preview == nil || model.editing)
-                Button("Edit Source") { model.edit() }
-                    .keyboardShortcut("e").disabled(model.document?.revision == nil || model.editing)
+                Button("Find in Document") { model.active?.finding = true }
+                    .keyboardShortcut("f").disabled(model.active?.canFind != true || model.showingGit)
+                Button("Edit Source") { model.active?.edit() }
+                    .keyboardShortcut("e").disabled(model.active?.canEdit != true || model.showingGit)
             }
             CommandGroup(after: .toolbar) {
                 Button(model.sidebar ? "Hide Sidebar" : "Show Sidebar") { model.sidebar.toggle() }
@@ -45,27 +45,33 @@ struct Folio: App {
                     model.inspector = false
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
+                Button(model.split ? "Merge Panes" : "Split Right", action: model.toggleSplit)
+                    .keyboardShortcut("\\")
+                Button("Next Tab") { model.cycle(1) }.keyboardShortcut(.tab, modifiers: [.control])
+                Button("Previous Tab") { model.cycle(-1) }.keyboardShortcut(.tab, modifiers: [.control, .shift])
+                Button(model.showingGit ? "Back to Reading" : "Show Git") { model.showingGit.toggle() }
+                    .disabled(model.gitLocation == nil)
                 Divider()
-                Button("Increase Text Size") { model.setSize(1) }.keyboardShortcut("=")
-                Button("Decrease Text Size") { model.setSize(-1) }.keyboardShortcut("-")
+                Button("Increase Text Size") { model.appearance.size = min(30, model.appearance.size + 1) }.keyboardShortcut("=")
+                Button("Decrease Text Size") { model.appearance.size = max(13, model.appearance.size - 1) }.keyboardShortcut("-")
                 Button("Reset Text Size") { model.appearance.size = 18 }.keyboardShortcut("0")
             }
         }
+        Settings { ReaderSettings(model: model) }
     }
 }
 
 @MainActor
 final class FolioDelegate: NSObject, NSApplicationDelegate {
     weak var model: ReaderModel?
-    var pending: URL?
+    var pending: [URL] = []
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.first else { return }
-        if let model { model.open(url) } else { pending = url }
+        if let model { model.openURLs(urls) } else { pending.append(contentsOf: urls) }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        model?.leaveDraft() == false ? .terminateCancel : .terminateNow
+        model?.protectAllDrafts() == false ? .terminateCancel : .terminateNow
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -110,7 +116,7 @@ struct WindowOwner: NSViewRepresentable {
         }
 
         func windowShouldClose(_ sender: NSWindow) -> Bool {
-            model?.leaveDraft() != false && previous?.windowShouldClose?(sender) != false
+            model?.protectAllDrafts() != false && previous?.windowShouldClose?(sender) != false
         }
     }
 }

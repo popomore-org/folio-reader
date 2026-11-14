@@ -137,3 +137,47 @@ fn save_keeps_macos_extended_attributes() -> Result<(), Error> {
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "keep-me");
     Ok(())
 }
+
+#[cfg(feature = "git")]
+#[test]
+fn git_changes_are_scoped_and_show_removed_file_patches() -> Result<(), Error> {
+    let root = tempdir()?;
+    let repo = git2::Repository::init(root.path())?;
+    fs::create_dir(root.path().join("project"))?;
+    fs::write(root.path().join("project/deleted.md"), "Previous content\n")?;
+    fs::write(root.path().join("outside.md"), "Outside the workspace\n")?;
+    let workspace = Workspace::open(root.path().join("project"))?;
+    let initial = workspace.git_changes("")?.unwrap();
+    assert_eq!(initial.total, 1);
+    assert_eq!(initial.changes[0].unstaged.as_deref(), Some("Untracked"));
+
+    let mut index = repo.index()?;
+    let path = Path::new("project/deleted.md");
+    index.add_path(path)?;
+    index.write()?;
+    let tree = repo.find_tree(index.write_tree()?)?;
+    let sig = git2::Signature::now("Folio QA", "local@example.invalid")?;
+    let id = repo.commit(Some("HEAD"), &sig, &sig, "Initial note", &tree, &[])?;
+    fs::remove_file(root.path().join(path))?;
+
+    let changes = workspace.git_changes("deleted.md")?.unwrap();
+    assert_eq!(changes.total, 1);
+    assert_eq!(changes.changes[0].path, "deleted.md");
+    assert_eq!(changes.changes[0].unstaged.as_deref(), Some("Deleted"));
+    assert!(
+        workspace
+            .git_patch("deleted.md", None)?
+            .unwrap()
+            .text
+            .contains("-Previous content")
+    );
+    assert_eq!(
+        workspace.git_file("deleted.md")?.unwrap().commits[0].id,
+        id.to_string()
+    );
+    assert!(matches!(
+        workspace.git_patch("../outside.md", None),
+        Err(Error::OutsideWorkspace)
+    ));
+    Ok(())
+}
