@@ -1,8 +1,8 @@
 import AppKit
 
 private let help = """
-Usage: folio [--app APP] [open] [--] [PATH ...]
-       folio [--app APP] preview [--] [FILE]
+Usage: folio [--app APP] [-n] [open] [--] [PATH ...]
+       folio [--app APP] [-n] preview [--] [FILE]
        folio [--app APP] install
        folio [--app APP] --version
        folio --help
@@ -11,6 +11,8 @@ Usage: folio [--app APP] [open] [--] [PATH ...]
   preview   Open a file in the preview window. Omit FILE to choose one in Folio.
   install   Add folio to ~/.local/bin without replacing an existing command.
   --app     Use a specific Folio .app bundle. Overrides FOLIO_APP.
+  -n, --new-instance
+            Start a separate Folio process with an independent workspace.
 
 Paths may be relative to the current directory. Use -- before a path starting with -.
 """
@@ -27,7 +29,6 @@ private struct Failure: Error {
 
 private enum Command: String {
     case open, preview, install
-    case help = "--help"
     case version = "--version"
 }
 
@@ -73,13 +74,39 @@ private func findApp(_ explicit: String?) throws -> BundleInfo {
     throw Failure("Folio wasn’t found. Install it or pass --app /path/to/Folio.app.")
 }
 
-private func openInFolio(_ app: BundleInfo, targets: [String]) throws {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    process.arguments = ["-a", app.url.path, "--"] + targets
-    try process.run()
-    process.waitUntilExit()
-    guard process.terminationStatus == 0 else { throw Failure("macOS could not open the target in Folio.") }
+@MainActor
+private func openInFolio(_ app: BundleInfo, targets: [URL], newInstance: Bool) async throws {
+    if targets.allSatisfy(\.isFileURL) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        var arguments = ["-a", app.url.path]
+        if newInstance { arguments.append("-n") }
+        arguments += ["--"] + targets.map(\.path)
+        if newInstance { arguments += ["--args", "--folio-new-instance"] }
+        process.arguments = arguments
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { throw Failure("macOS could not open the target in Folio.") }
+        return
+    }
+
+    let configuration = NSWorkspace.OpenConfiguration()
+    configuration.createsNewApplicationInstance = newInstance
+    configuration.allowsRunningApplicationSubstitution = false
+    configuration.promptsUserIfNeeded = false
+    if newInstance { configuration.arguments = ["--folio-new-instance"] }
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+        let completion: @Sendable (NSRunningApplication?, (any Error)?) -> Void = { running, error in
+            if let error {
+                continuation.resume(throwing: error)
+            } else if running != nil {
+                continuation.resume()
+            } else {
+                continuation.resume(throwing: Failure("macOS could not open the target in Folio."))
+            }
+        }
+        NSWorkspace.shared.open(targets, withApplicationAt: app.url, configuration: configuration, completionHandler: completion)
+    }
 }
 
 private func install(_ app: BundleInfo) throws {
@@ -103,31 +130,40 @@ private func install(_ app: BundleInfo) throws {
 }
 
 @MainActor
-private func run() throws {
+private func run() async throws {
     var arguments = ArraySlice(CommandLine.arguments.dropFirst())
     var explicitApp: String?
-    if arguments.first == "--app" {
-        arguments.removeFirst()
-        guard let path = arguments.popFirst(), !path.isEmpty, path != "--" else {
-            throw Failure("Pass the .app path after --app.", status: 2)
+    var command: Command?
+    var newInstance = false
+    options: while let argument = arguments.first, argument != "--" {
+        switch argument {
+        case "--help":
+            print(help)
+            return
+        case "--app":
+            arguments.removeFirst()
+            guard let path = arguments.popFirst(), !path.isEmpty, !path.hasPrefix("-") else {
+                throw Failure("Pass the .app path after --app.", status: 2)
+            }
+            explicitApp = path
+        case "-n", "--new-instance":
+            newInstance = true
+            arguments.removeFirst()
+        default:
+            guard command == nil, let selected = Command(rawValue: argument) else { break options }
+            command = selected
+            arguments.removeFirst()
         }
-        explicitApp = path
-    }
-
-    let command = arguments.first.flatMap(Command.init(rawValue:))
-    if command != nil { arguments.removeFirst() }
-    if command == .help || arguments.first == "--help" {
-        print(help)
-        return
     }
     if arguments.first == "--" {
         arguments.removeFirst()
     } else if let flag = arguments.first(where: { $0.hasPrefix("-") }) {
         throw Failure("Unknown option \(flag). Use -- before a path starting with -.", status: 2)
     }
+    if newInstance && (command == .install || command == .version) {
+        throw Failure("--new-instance only applies to opening or previewing files.", status: 2)
+    }
     switch command ?? .open {
-    case .help:
-        print(help)
     case .version, .install:
         guard arguments.isEmpty else { throw Failure("This command takes no paths.", status: 2) }
         let app = try findApp(explicitApp)
@@ -140,9 +176,9 @@ private func run() throws {
                   properties.isRegularFile == true || properties.isDirectory == true else {
                 throw Failure("Choose an accessible local file or folder: \(path)")
             }
-            return file.path
+            return file
         }
-        try openInFolio(findApp(explicitApp), targets: targets)
+        try await openInFolio(findApp(explicitApp), targets: targets, newInstance: newInstance)
     case .preview:
         guard arguments.count <= 1 else { throw Failure("Preview accepts one local file.", status: 2) }
         let app = try findApp(explicitApp)
@@ -156,13 +192,13 @@ private func run() throws {
             }
             url.queryItems = [URLQueryItem(name: "path", value: file.path)]
         }
-        guard let target = url.string else { throw Failure("Could not encode the preview URL.") }
-        try openInFolio(app, targets: [target])
+        guard let target = url.url else { throw Failure("Could not encode the preview URL.") }
+        try await openInFolio(app, targets: [target], newInstance: newInstance)
     }
 }
 
 do {
-    try run()
+    try await run()
 } catch {
     let failure = error as? Failure
     FileHandle.standardError.write(Data("folio: \(failure?.message ?? error.localizedDescription)\n".utf8))

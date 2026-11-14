@@ -119,7 +119,8 @@ impl Workspace {
     }
 
     /// Atomically replace an editable file after checking the revision observed
-    /// at read time. Serializes saves through this library in one process.
+    /// at read time. On Unix, a file lock also coordinates concurrent saves
+    /// through this library in separate processes.
     /// Filesystem metadata does not contribute to the content revision.
     pub fn save(
         &self,
@@ -142,6 +143,23 @@ impl Workspace {
             .read(true)
             .write(true)
             .open(&target)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+
+            // Another process can replace the path while this descriptor still
+            // refers to the old file. Check identity after acquiring the lock.
+            match original_file.try_lock() {
+                Ok(()) => {}
+                Err(std::fs::TryLockError::WouldBlock) => return Err(Error::Conflict),
+                Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+            }
+            let locked = original_file.metadata()?;
+            let current = target.metadata()?;
+            if (locked.dev(), locked.ino()) != (current.dev(), current.ino()) {
+                return Err(Error::Conflict);
+            }
+        }
         let original = read_file(&original_file)?;
         if Revision::of(&original) != *expected {
             return Err(Error::Conflict);

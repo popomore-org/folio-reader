@@ -56,7 +56,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     private static let consentKey = "folioUpdateConsentRecorded"
     private static let maximumArchiveSize = 64 * 1024 * 1024
 
-    var isConfigured: Bool { feed != nil }
+    var isConfigured: Bool { feed != nil && !InstanceMode.isSeparate }
     var version: String? { offer?.version }
     var notes: String { offer?.notes ?? "" }
     var canCheck: Bool {
@@ -187,7 +187,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     func install() {
         guard canInstall, let offer else { return }
         guard canRestart else {
-            set(.waiting, "Finish editing, opening files, or playing media before restarting.")
+            set(.waiting, restartDelayMessage)
             return
         }
         guard let updater, !updater.sessionInProgress else { return }
@@ -196,7 +196,22 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
         updater.checkForUpdates()
     }
 
-    private var canRestart: Bool { !presentingConsent && model?.hasUpdateActivity == false }
+    private var otherInstancesRunning: Bool {
+        guard let id = Bundle.main.bundleIdentifier else { return false }
+        return NSRunningApplication.runningApplications(withBundleIdentifier: id).contains {
+            $0.processIdentifier != ProcessInfo.processInfo.processIdentifier && !$0.isTerminated
+        }
+    }
+
+    private var canRestart: Bool {
+        !presentingConsent && model?.hasUpdateActivity == false && !otherInstancesRunning
+    }
+
+    private var restartDelayMessage: String {
+        otherInstancesRunning
+            ? "Close the other Folio instances before installing the update."
+            : "Finish editing, opening files, or playing media before restarting."
+    }
 
     private func installWhenIdle() {
         if let resume = postponeRelaunch, canRestart {
@@ -210,7 +225,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
         } else if authorized == nil, automaticInstalls, deferredOffer != offer, canInstall, !lastCheckFailed {
             guard canRestart else {
                 restartAfter = nil
-                if phase != .waiting { set(.waiting, "Folio will wait for your work before restarting.") }
+                if phase != .waiting { set(.waiting, restartDelayMessage) }
                 return
             }
             let now = ContinuousClock.now
@@ -225,7 +240,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
 
     func allowUpdateTermination() -> Bool {
         guard isInstalling, !canRestart else { return true }
-        set(.waiting, "Folio will wait for your work before restarting.")
+        set(.waiting, restartDelayMessage)
         return false
     }
 
@@ -357,7 +372,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     func showReady(toInstallAndRelaunch reply: @escaping (SPUUserUpdateChoice) -> Void) {
         guard authorized != nil, canRestart else {
             // Dismiss would leave Sparkle's installer running and install on an ordinary quit.
-            set(.waiting, "Finish your work before restarting.")
+            set(.waiting, restartDelayMessage)
             reply(.skip)
             return
         }
@@ -367,7 +382,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock install: @escaping () -> Void) -> Bool {
         guard !canRestart else { return false }
         postponeRelaunch = install
-        set(.waiting, "Folio will wait for your work before restarting.")
+        set(.waiting, restartDelayMessage)
         return true
     }
 

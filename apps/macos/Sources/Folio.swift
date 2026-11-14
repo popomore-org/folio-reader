@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 
+enum InstanceMode {
+    static let isSeparate = CommandLine.arguments.contains("--folio-new-instance")
+}
+
 @main
 struct Folio: App {
     @NSApplicationDelegateAdaptor(FolioDelegate.self) private var delegate
@@ -193,6 +197,7 @@ struct WindowOwner: NSViewRepresentable {
             previous = window.delegate
             window.delegate = self
             window.identifier = WindowOwner.identifier
+            if InstanceMode.isSeparate { window.isRestorable = false }
             window.tabbingMode = .disallowed
             DispatchQueue.main.async { [weak self, weak window] in self?.updates?.offerUpdateChecks(on: window) }
         }

@@ -109,6 +109,8 @@ private struct UpdateSettings: View {
                         if updates.canDefer { Button("Install Later", action: updates.deferInstallation) }
                         if updates.canCancel { Button("Cancel", action: updates.cancel) }
                     }
+                } else if InstanceMode.isSeparate {
+                    Text("Use the main Folio instance to check for updates.").foregroundStyle(.secondary)
                 } else {
                     Text("This preview is updated by installing a new preview build.").foregroundStyle(.secondary)
                 }

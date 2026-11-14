@@ -41,6 +41,9 @@ jobs:
           status=0
           "$cli" "$app/no-such-file" || status=$?
           test "$status" -eq 1
+          status=0
+          "$cli" --new-instance --version || status=$?
+          test "$status" -eq 2
           cargo test --locked --workspace
           npm test --prefix renderer
           scripts/check-consumer

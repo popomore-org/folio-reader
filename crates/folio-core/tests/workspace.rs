@@ -39,6 +39,27 @@ fn save_preserves_text_format_and_detects_conflicts() -> Result<(), Error> {
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn save_conflicts_with_a_locked_file() -> Result<(), Error> {
+    let root = tempdir()?;
+    let path = root.path().join("note.md");
+    fs::write(&path, "# Original")?;
+    let workspace = Workspace::open(root.path())?;
+    let revision = workspace.read("note.md")?.revision.unwrap();
+    let writer = fs::OpenOptions::new().read(true).write(true).open(&path)?;
+    writer.lock()?;
+    assert!(matches!(
+        workspace.save("note.md", &revision, "# Draft"),
+        Err(Error::Conflict)
+    ));
+    assert_eq!(fs::read_to_string(&path)?, "# Original");
+    drop(writer);
+    workspace.save("note.md", &revision, "# Draft")?;
+    assert_eq!(fs::read_to_string(path)?, "# Draft");
+    Ok(())
+}
+
 #[test]
 fn file_selection_respects_scope_and_format() -> Result<(), Error> {
     let root = tempdir()?;

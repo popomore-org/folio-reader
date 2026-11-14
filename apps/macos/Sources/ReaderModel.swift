@@ -149,7 +149,9 @@ final class ReaderModel: ObservableObject {
     @Published var sidebar = true
     @Published var inspector = false
     @Published var showingGit = false
-    @Published var appearance = Appearance() { didSet { appearance.persist() } }
+    @Published var appearance = Appearance() {
+        didSet { if !InstanceMode.isSeparate { appearance.persist() } }
+    }
     @Published private(set) var gitRefresh = UUID()
     @Published private(set) var folderTreeFocus: UUID?
 
@@ -169,8 +171,10 @@ final class ReaderModel: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        folders = (defaults.stringArray(forKey: Self.foldersKey) ?? []).map {
-            Folder(url: URL(fileURLWithPath: $0, isDirectory: true))
+        if !InstanceMode.isSeparate {
+            folders = (defaults.stringArray(forKey: Self.foldersKey) ?? []).map {
+                Folder(url: URL(fileURLWithPath: $0, isDirectory: true))
+            }
         }
         selectedRoot = folders.first?.url
         if let selectedRoot { expand(root: selectedRoot, path: "") }
@@ -435,6 +439,7 @@ final class ReaderModel: ObservableObject {
     }
 
     private func persistFolders() {
+        guard !InstanceMode.isSeparate else { return }
         defaults.set(folders.map(\.url.path), forKey: Self.foldersKey)
     }
 
