@@ -1,0 +1,91 @@
+:root {
+  color-scheme: light;
+  --page: #fbfaf8;
+  --ink: #292422;
+  --muted: #675d58;
+  --line: #dbd3ce;
+  --inset: #f2eeea;
+  --link: #8d402e;
+  --text-size: 18px;
+  --reading-width: 700px;
+  --body-font: "New York", "Songti SC", Georgia, serif;
+  --ui-font: -apple-system, BlinkMacSystemFont, sans-serif;
+  --code-font: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+:root[data-serif="false"] { --body-font: var(--ui-font); }
+
+:root[data-theme="paper"] {
+  --page: #f6edde;
+  --ink: #352923;
+  --muted: #665649;
+  --line: #d9cbbb;
+  --inset: #ede1d0;
+  --link: #86402a;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #201c1a;
+  --ink: #ebe2db;
+  --muted: #c3b6ae;
+  --line: #4e443e;
+  --inset: #2d2623;
+  --link: #eba58e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --page: #201c1a;
+    --ink: #ebe2db;
+    --muted: #c3b6ae;
+    --line: #4e443e;
+    --inset: #2d2623;
+    --link: #eba58e;
+  }
+}
+
+* { box-sizing: border-box; }
+html { scroll-padding: 26px; }
+body { margin: 0; background: var(--page); color: var(--ink); }
+article {
+  color-scheme: inherit;
+  width: min(calc(100% - 52px), var(--reading-width));
+  margin-inline: auto;
+  padding-block: 47px 88px;
+  font: var(--text-size)/1.72 var(--body-font);
+  overflow-wrap: break-word;
+}
+article > :first-child { margin-top: 0; }
+article > :last-child { margin-bottom: 0; }
+h1, h2, h3, h4, h5, h6 { line-height: 1.24; margin: 1.9em 0 .5em; }
+h1 { font-size: 2.18em; letter-spacing: -.035em; }
+h2 { font-size: 1.54em; letter-spacing: -.02em; }
+h3 { font-size: 1.19em; }
+p, ul, ol { margin: .75em 0 1em; }
+ul, ol { padding-inline-start: 1.55em; }
+li + li { margin-block-start: .22em; }
+a { color: var(--link); text-underline-offset: .18em; }
+a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+blockquote { margin: 1em 0; padding: .45em 1em; color: var(--muted); background: var(--inset); border-radius: 5px; }
+blockquote p { margin: .3em 0; }
+pre, code { font-family: var(--code-font); font-size: .82em; }
+code { background: var(--inset); border-radius: 3px; padding: .13em .27em; }
+pre { overflow: auto; padding: .95em 1.1em; border: 1px solid var(--line); border-radius: 6px; background: var(--inset); line-height: 1.52; }
+pre code { font-size: inherit; background: transparent; padding: 0; }
+.plain { white-space: pre-wrap; background: transparent; border: 0; padding: 0; font-size: .9em; }
+img { max-width: 100%; height: auto; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 1.65em 0; }
+table { border-collapse: collapse; min-width: 100%; font: .77em/1.45 var(--ui-font); }
+thead { background: var(--inset); }
+td, th { text-align: start; border-bottom: 1px solid var(--line); padding: .68em .85em; }
+th { color: var(--ink); }
+.table-scroll { overflow-x: auto; }
+.diagram { margin: 1em 0; padding: 12px 0; overflow-x: auto; }
+.diagram svg { max-width: 100%; height: auto; }
+.diagram-error, .preview-note { color: var(--muted); font: .78em/1.5 var(--ui-font); }
+[hidden] { display: none !important; }
+@media (max-width: 520px) {
+  article { width: calc(100% - 36px); padding-block-start: 27px; }
+}

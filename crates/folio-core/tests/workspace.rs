@@ -1,0 +1,109 @@
+use folio_core::{Error, FileKind, Workspace, render_markdown, sanitize_html};
+use std::{fs, path::Path};
+use tempfile::tempdir;
+
+#[test]
+fn rich_preview_is_readable_and_escapes_author_html() {
+    let preview = render_markdown(
+        "# 中文 标题\n\n# 中文 标题\n\n- [x] Checked\n\n![test](image.png)\n\n<iframe src=\"x\"></iframe>",
+    );
+    assert_eq!(preview.headings[0].id, "中文-标题");
+    assert_eq!(preview.headings[1].id, "中文-标题-1");
+    assert!(preview.html.contains("disabled"));
+    assert!(preview.html.contains("checked"));
+    assert!(preview.html.contains("image.png"));
+    assert!(!preview.html.contains("<iframe"));
+    let html = sanitize_html(
+        "<p onclick='doBad()'>text</p><script>bad()</script><a href='javascript:bad()'>link</a>",
+    );
+    for removed in ["onclick", "script", "bad()"] {
+        assert!(!html.contains(removed));
+    }
+}
+
+#[test]
+fn save_preserves_text_format_and_detects_conflicts() -> Result<(), Error> {
+    let root = tempdir()?;
+    let file = root.path().join("note.md");
+    fs::write(&file, b"\xef\xbb\xbf# Note\r\nOriginal\r\n")?;
+    let workspace = Workspace::open(root.path())?;
+    let original = workspace.read("note.md")?.revision.unwrap();
+    let updated = workspace.save("note.md", &original, "# Change\nUpdated\n")?;
+    assert_eq!(fs::read(&file)?, b"\xef\xbb\xbf# Change\r\nUpdated\r\n");
+    fs::write(&file, b"Changed elsewhere")?;
+    assert!(matches!(
+        workspace.save("note.md", &updated, "draft"),
+        Err(Error::Conflict)
+    ));
+    assert_eq!(fs::read(file)?, b"Changed elsewhere");
+    Ok(())
+}
+
+#[test]
+fn file_selection_respects_scope_and_format() -> Result<(), Error> {
+    let root = tempdir()?;
+    let workspace = Workspace::open(root.path())?;
+    fs::create_dir(root.path().join("notes"))?;
+    fs::write(
+        root.path().join("sample.csv"),
+        "Title,Value\n\"Name\twith tab\",<script>",
+    )?;
+    fs::write(root.path().join(".hidden"), "Invisible")?;
+    let entries = workspace.list("")?;
+    assert_eq!(entries.len(), 2);
+    assert!(entries[0].directory);
+    let table = workspace.read("sample.csv")?;
+    assert_eq!(table.kind, FileKind::Table);
+    assert!(table.preview.unwrap().html.contains("&lt;script&gt;"));
+    assert!(table.revision.is_none());
+    assert!(matches!(
+        workspace.read("../outside.md"),
+        Err(Error::OutsideWorkspace)
+    ));
+    assert!(matches!(
+        workspace.read(Path::new("/etc/hosts")),
+        Err(Error::OutsideWorkspace)
+    ));
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink("/etc/hosts", root.path().join("external"))?;
+        assert!(matches!(
+            workspace.read("external"),
+            Err(Error::OutsideWorkspace)
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "git")]
+#[test]
+fn file_history_and_staged_and_unstaged_patches() -> Result<(), Error> {
+    let root = tempdir()?;
+    let repo = git2::Repository::init(root.path())?;
+    let file = root.path().join("name [with brackets].md");
+    fs::write(&file, "# Original\n")?;
+    let path = Path::new("name [with brackets].md");
+    let mut index = repo.index()?;
+    index.add_path(path)?;
+    index.write()?;
+    let tree = repo.find_tree(index.write_tree()?)?;
+    let sig = git2::Signature::now("Folio QA", "local@example.invalid")?;
+    let commit = repo.commit(Some("HEAD"), &sig, &sig, "Initial note", &tree, &[])?;
+    fs::write(&file, "# Staged\n")?;
+    index.add_path(path)?;
+    index.write()?;
+    fs::write(file, "# Working tree\n")?;
+    let workspace = Workspace::open(root.path())?;
+    let history = workspace.git_file(path)?.unwrap();
+    assert_eq!(history.staged.as_deref(), Some("Modified"));
+    assert_eq!(history.unstaged.as_deref(), Some("Modified"));
+    assert_eq!(history.commits[0].id, commit.to_string());
+    let patch = workspace.git_patch(path, None)?.unwrap();
+    assert!(patch.text.contains("+# Staged"));
+    assert!(patch.text.contains("+# Working tree"));
+    let patch = workspace
+        .git_patch(path, Some(&commit.to_string()))?
+        .unwrap();
+    assert!(patch.text.contains("+# Original"));
+    Ok(())
+}

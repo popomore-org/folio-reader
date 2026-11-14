@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+repo="$PWD"
+version="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+consumer="$(mktemp -d)"
+trap 'rm -rf "$consumer"' EXIT
+mkdir "$consumer/src"
+cat > "$consumer/Cargo.toml" <<TOML
+[package]
+name = "folio-external-consumer"
+version = "0.1.0"
+edition = "2024"
+[features]
+default = ["folio-core/git"]
+[dependencies]
+folio-core = { path = "$repo/crates/folio-core", default-features = false }
+TOML
+# Keep this independent consumer on the source workspace's dependency versions.
+cp Cargo.lock "$consumer/Cargo.lock"
+cat > "$consumer/src/main.rs" <<'RS'
+use folio_core::{FileKind, Workspace};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = Workspace::open("fixture")?;
+    assert_eq!(workspace.list("")?.len(), 1);
+    let document = workspace.read("note.md")?;
+    assert_eq!(document.kind, FileKind::Markdown);
+    assert_eq!(document.preview.unwrap().headings[0].title, "Notes");
+    #[cfg(feature = "default")]
+    assert!(workspace.git_file("note.md")?.is_none());
+    Ok(())
+}
+RS
+mkdir "$consumer/fixture"
+printf '# Notes\n' > "$consumer/fixture/note.md"
+cd "$consumer"
+cargo +"$version" run --quiet
+cargo +"$version" run --quiet --no-default-features
