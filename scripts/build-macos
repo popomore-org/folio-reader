@@ -27,6 +27,7 @@ cp apps/macos/Info.plist "$staged/Contents/"
 xcrun swift apps/macos/icon.swift "$stage/app.iconset"
 iconutil -c icns "$stage/app.iconset" -o "$staged/Contents/Resources/Folio.icns"
 xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-errors -O \
+  -import-objc-header apps/macos/Bridge.h \
   apps/macos/Sources/*.swift "$CARGO_TARGET_DIR/$target/release/libfolio_bridge.a" \
   -lz -liconv -framework Security -framework SystemConfiguration -framework CoreFoundation \
   -o "$staged/Contents/MacOS/Folio"

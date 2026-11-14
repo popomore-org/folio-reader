@@ -47,17 +47,20 @@ impl Workspace {
         {
             return Err(Error::OutsideWorkspace);
         }
-        if path.components().any(|part| part.as_os_str() == ".git") {
+        if path
+            .components()
+            .any(|part| part.as_os_str().eq_ignore_ascii_case(".git"))
+        {
             return Err(Error::OutsideWorkspace);
         }
         let resolved = self.root.join(path).canonicalize()?;
         if !resolved.starts_with(&self.root) {
             return Err(Error::OutsideWorkspace);
         }
-        if resolved
-            .strip_prefix(&self.root)
-            .is_ok_and(|path| path.components().any(|part| part.as_os_str() == ".git"))
-        {
+        if resolved.strip_prefix(&self.root).is_ok_and(|path| {
+            path.components()
+                .any(|part| part.as_os_str().eq_ignore_ascii_case(".git"))
+        }) {
             return Err(Error::OutsideWorkspace);
         }
         Ok(resolved)
@@ -117,7 +120,7 @@ impl Workspace {
 
     /// Atomically replace an editable file after checking the revision observed
     /// at read time. Serializes saves through this library in one process.
-    /// File ownership, ACLs and extended attributes are not revisioned.
+    /// Filesystem metadata does not contribute to the content revision.
     pub fn save(
         &self,
         path: impl AsRef<Path>,
@@ -135,7 +138,11 @@ impl Workspace {
         if !target.is_file() {
             return Err(Error::InvalidPath);
         }
-        let original = read_text_bytes(&target)?;
+        let original_file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&target)?;
+        let original = read_file(&original_file)?;
         if Revision::of(&original) != *expected {
             return Err(Error::Conflict);
         }
@@ -159,8 +166,7 @@ impl Workspace {
         let parent = target.parent().ok_or(Error::InvalidPath)?;
         let mut file = tempfile::NamedTempFile::new_in(parent)?;
         file.write_all(&bytes)?;
-        file.as_file()
-            .set_permissions(target.metadata()?.permissions())?;
+        preserve_metadata(&original_file, file.as_file())?;
         file.as_file().sync_all()?;
         if self.resolve(path)? != target || read_text_bytes(&target)? != original {
             return Err(Error::Conflict);
@@ -171,7 +177,10 @@ impl Workspace {
 }
 
 fn read_text_bytes(path: &Path) -> Result<Vec<u8>, Error> {
-    let file = fs::File::open(path)?;
+    read_file(&fs::File::open(path)?)
+}
+
+fn read_file(file: &fs::File) -> Result<Vec<u8>, Error> {
     if !file.metadata()?.is_file() {
         return Err(Error::InvalidPath);
     }
@@ -181,4 +190,43 @@ fn read_text_bytes(path: &Path) -> Result<Vec<u8>, Error> {
         return Err(Error::TooLarge);
     }
     Ok(bytes)
+}
+
+fn preserve_metadata(source: &fs::File, target: &fs::File) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::fd::AsRawFd;
+        use std::os::unix::fs::MetadataExt;
+        let source_metadata = source.metadata()?;
+        let target_metadata = target.metadata()?;
+        // Avoid changing the original owner and group during replacement.
+        if (source_metadata.uid(), source_metadata.gid())
+            != (target_metadata.uid(), target_metadata.gid())
+        {
+            // SAFETY: both file descriptors remain open for the duration of these calls.
+            let result = unsafe {
+                libc::fchown(
+                    target.as_raw_fd(),
+                    source_metadata.uid(),
+                    source_metadata.gid(),
+                )
+            };
+            if result != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+        }
+        // SAFETY: copy documented metadata only, between two live descriptors.
+        let result = unsafe {
+            libc::fcopyfile(
+                source.as_raw_fd(),
+                target.as_raw_fd(),
+                std::ptr::null_mut(),
+                libc::COPYFILE_ACL | libc::COPYFILE_XATTR,
+            )
+        };
+        if result != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    target.set_permissions(source.metadata()?.permissions())
 }

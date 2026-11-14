@@ -107,3 +107,33 @@ fn file_history_and_staged_and_unstaged_patches() -> Result<(), Error> {
     assert!(patch.text.contains("+# Original"));
     Ok(())
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn save_keeps_macos_extended_attributes() -> Result<(), Error> {
+    use std::process::Command;
+    let root = tempdir()?;
+    let file = root.path().join("note.md");
+    fs::write(&file, "# Original")?;
+    let attr = "org.popomore.folio.test";
+    assert!(
+        Command::new("/usr/bin/xattr")
+            .args(["-w", attr, "keep-me"])
+            .arg(&file)
+            .status()?
+            .success()
+    );
+    let workspace = Workspace::open(root.path())?;
+    workspace.save(
+        "note.md",
+        &workspace.read("note.md")?.revision.unwrap(),
+        "# Revised",
+    )?;
+    let output = Command::new("/usr/bin/xattr")
+        .args(["-p", attr])
+        .arg(&file)
+        .output()?;
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "keep-me");
+    Ok(())
+}

@@ -172,6 +172,7 @@ dependencies = [
  "ammonia",
  "csv",
  "git2",
+ "libc",
  "pulldown-cmark",
  "serde",
  "sha2",

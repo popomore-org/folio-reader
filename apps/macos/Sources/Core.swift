@@ -1,10 +1,5 @@
 import Foundation
 
-@_silgen_name("folio_call")
-private func folioCall(_ request: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?
-@_silgen_name("folio_free")
-private func folioFree(_ result: UnsafeMutablePointer<CChar>)
-
 enum FileKind: String, Decodable {
     case markdown, text, html, rtf, pdf, image, audio, video, table, mermaid, vega, other
 
@@ -89,10 +84,10 @@ struct Core {
         body["path"] = path
         let data = try JSONEncoder().encode(body)
         let json = String(decoding: data, as: UTF8.self)
-        guard let result = json.withCString({ folioCall($0) }) else {
+        guard let result = json.withCString({ folio_call($0) }) else {
             throw CoreError(message: "The reader did not return a result.")
         }
-        defer { folioFree(result) }
+        defer { folio_free(result) }
         let response = try JSONDecoder().decode(Response<T>.self, from: Data(String(cString: result).utf8))
         if let error = response.error {
             throw CoreError(message: error)
@@ -103,13 +98,13 @@ struct Core {
     static func file(_ path: String, in root: URL) -> URL? {
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
         guard !components.isEmpty,
-              !components.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." || $0 == ".git" })
+              !components.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." || $0.lowercased() == ".git" })
         else { return nil }
         let resolved = root.appendingPathComponent(path).resolvingSymlinksInPath().standardizedFileURL
         let prefix = root.pathComponents
         guard resolved.pathComponents.count > prefix.count,
               resolved.pathComponents.starts(with: prefix),
-              !resolved.pathComponents.dropFirst(prefix.count).contains(".git")
+              !resolved.pathComponents.dropFirst(prefix.count).contains(where: { $0.lowercased() == ".git" })
         else { return nil }
         return resolved
     }

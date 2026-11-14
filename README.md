@@ -1,5 +1,8 @@
 # Folio
 
+> **边界**　包含：本地文件阅读、轻编辑和只读 Git 查看　｜　不包含：工作区托管和 Git 写操作　｜　产出：macOS 预览应用和 folio-core Rust 库　｜　依赖：Meta 共享 CI
+> 体系说明见 [popomore-org/meta](https://github.com/popomore-org/meta/blob/main/docs/architecture.md)。
+
 Folio 是本地文件阅读器。打开一个文件或目录，左侧浏览文件，中央阅读，右侧按需打开 Markdown 大纲或 Git 历史。支持 Apple Silicon，最低部署目标 macOS 14。本仓提供源码与本地 ad hoc 预览构建。
 
 ## 使用
@@ -22,7 +25,7 @@ DOCX、EPUB 和 SVG 目前可从未知格式提示打开系统默认应用。目
 
 ## 构建与验证
 
-构建需要 Apple Silicon Mac、Xcode（CI 固定 26.6，本地已用 27.2）、Rust 1.97.0、Node 26.13.0。使用 `rust-toolchain.toml`、`.node-version` 和两个锁文件。
+构建需要 Apple Silicon Mac、Xcode 27.2、Rust 1.97.0、Node 26.13.0。使用 `rust-toolchain.toml`、`.node-version` 和两个锁文件。
 
 ```sh
 scripts/build-macos
@@ -57,6 +60,6 @@ if let Some(preview) = document.preview {
 
 Mokisu 的 Rust 宿主可在允许访问的目录上调用库，再把文件类型、文档预览、大纲和 Git 信息交给自己的 Console 界面。调用是同步的，异步宿主应放到阻塞任务执行器。宿主负责授权根目录，以及 WebView 的脚本、资源和链接策略。图表引擎在 Folio macOS 的 WebKit 展示层，库输出带语言标识的、已转义的代码块。独立消费者示例覆盖启用及禁用 Git 两种构建。Mokisu 自身的界面接线尚未进行。
 
-保存使用内容版本检查和同目录原子替换，保留 UTF-8 BOM、统一的 CRLF 与文件模式。进程内保存串行化。外部写入者在最后一次检查与替换之间仍可能写入。文本预览和编辑上限为 8 MiB。本地相对资源仅在选中目录内解析，预览不会主动请求在线资源。
+保存使用内容版本检查和同目录原子替换，保留 UTF-8 BOM、统一的 CRLF 与文件模式。macOS 上同时保留拥有者、ACL 和扩展属性。进程内保存串行化。外部写入者在最后一次检查与替换之间仍可能写入。文本预览和编辑上限为 8 MiB。本地相对资源仅在选中目录内解析，预览不会主动请求在线资源。
 
 [交互对照、主题和 Meta 设计依据](docs/reader-design.md)

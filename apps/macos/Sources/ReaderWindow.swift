@@ -10,11 +10,11 @@ struct ReaderWindow: View {
         HStack(spacing: 0) {
             HSplitView {
                 if model.sidebar {
-                    sidebar.frame(minWidth: 172, idealWidth: 222, maxWidth: 340)
+                    sidebar.frame(minWidth: 172, idealWidth: 222, maxWidth: 265)
                 }
                 reading.frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                 if model.inspector {
-                    Inspector(model: model).frame(minWidth: 180, idealWidth: 234, maxWidth: 330)
+                    Inspector(model: model).frame(minWidth: 180, idealWidth: 234, maxWidth: 265)
                 }
             }
         }
