@@ -42,7 +42,7 @@ final class ReaderTab: ObservableObject, Identifiable {
     var dirty: Bool { editing && document?.source != draft }
     var title: String { location.name }
     var canFind: Bool { document?.preview != nil && !editing }
-    var canEdit: Bool { document?.revision != nil && !editing }
+    var canEdit: Bool { document?.revision != nil && document?.source != nil }
 
     func load() {
         readTask?.cancel()
@@ -68,7 +68,12 @@ final class ReaderTab: ObservableObject, Identifiable {
         }
     }
 
-    func edit() {
+    func setEditing(_ enabled: Bool) {
+        guard enabled != editing else { return }
+        if !enabled {
+            _ = leaveDraft()
+            return
+        }
         guard canEdit, let source = document?.source else { return }
         finding = false
         draft = source

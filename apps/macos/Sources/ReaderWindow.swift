@@ -44,13 +44,18 @@ struct ReaderWindow: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 if let active = model.active, !model.showingGit {
+                    HStack(spacing: 6) {
+                        Text("Edit").font(.callout).accessibilityHidden(true)
+                        Toggle("Edit Source", isOn: Binding(get: { active.editing }, set: active.setEditing))
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                            .controlSize(.small)
+                            .help(active.canEdit ? "Switch Between Reading and Editing (⌘E)" : "This file is read-only in Folio")
+                    }
+                    .disabled(!active.canEdit)
                     if active.editing {
-                        Button("Done") { _ = active.leaveDraft() }
                         Button("Save") { active.save() }.disabled(!active.dirty)
                     } else {
-                        Button("Edit Source", systemImage: "square.and.pencil", action: active.edit)
-                            .disabled(!active.canEdit)
-                            .help("Edit Source (⌘E)")
                         Button("Find", systemImage: "magnifyingglass") { active.finding.toggle() }
                             .disabled(!active.canFind)
                             .help("Find in Document (⌘F)")

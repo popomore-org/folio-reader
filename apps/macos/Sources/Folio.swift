@@ -42,8 +42,11 @@ struct Folio: App {
             CommandGroup(after: .textEditing) {
                 Button("Find in Document") { model.active?.finding = true }
                     .keyboardShortcut("f").disabled(!workspaceFocused || model.active?.canFind != true || model.showingGit)
-                Button("Edit Source") { model.active?.edit() }
-                    .keyboardShortcut("e").disabled(!workspaceFocused || model.active?.canEdit != true || model.showingGit)
+                Button(model.active?.editing == true ? "Return to Reading" : "Edit Source") {
+                    if let active = model.active { active.setEditing(!active.editing) }
+                }
+                .keyboardShortcut("e")
+                .disabled(!workspaceFocused || model.active?.canEdit != true || model.showingGit)
             }
             CommandGroup(after: .toolbar) {
                 Button("Focus Folder Tree", action: model.focusFolderTree)
