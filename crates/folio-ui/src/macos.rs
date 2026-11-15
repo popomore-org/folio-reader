@@ -207,8 +207,10 @@ struct WorkspaceRegionProps {
 
 #[component]
 fn WorkspaceRegion(WorkspaceRegionProps { id }: WorkspaceRegionProps) -> impl IntoElement {
-    let channel = CHANNELS.lock().unwrap().get(&id).and_then(Weak::upgrade);
-    let channel = channel.expect("the host registers the surface before starting its root");
+    let Some(channel) = CHANNELS.lock().unwrap().get(&id).and_then(Weak::upgrade) else {
+        // AppKit may remove a surface before its engine mounts the root.
+        return view().into_element();
+    };
     let mut watch = channel.state.subscribe();
     let state = signal(watch.borrow_and_update().clone());
     spawn(async move {

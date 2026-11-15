@@ -4,8 +4,8 @@
 
 - Status: 原生目标为 blocked。NSH 迁移通过本地原生验证。Meta #54 已合并，可信 Meta main 对固定 Folio #1 返回 ready。
 - Blockers: NSH 后续 PR 依赖 Folio #1 的首次 CI 接入。Finder 空格实际调用、正式签名、公证和 HTTPS 更新另待验收。
-- Next: 提交 NSH 后续 PR，核对当前提交的 CI 与审阅状态。首次接入合并后，将后续 PR 改投默认分支并重新验证。
-- Branch/PR: feat/nsh-workspace 基于 feat/macos-reader / Folio #1。
+- Next: 核对 Folio #2 当前提交的 CI 与审阅状态。首次接入合并后，将后续 PR 改投默认分支并重新验证。
+- Branch/PR: feat/nsh-workspace / Folio #2，基于 feat/macos-reader / Folio #1。
 
 ## Plan
 
@@ -242,3 +242,8 @@
 - macOS 27.0.1 验证浅深外观、双栏 Markdown 和只读 HTML、大纲、目录和标签上下文菜单、180 个样例文件的自动定位和键盘浏览、保存后继续编辑，以及 Git 工作树与提交补丁。
 - 预览包通过深度签名验证，Mach-O 最低版本为 macOS 14.0。Rust lint、测试、独立 Cargo 消费样例和图表渲染测试通过。
 - 可信 Meta `480c4a5` 固定 Folio #1 的 head `ef6c206` 与 base `5ea7f00`，只读检查返回 ready。NSH 迁移以该候选为基线单独提交，等待首次接入完成后改投 main。
+
+### Step 37 — 2026-11-15 — 提交后续 PR 并复核视图生命周期
+
+- [Folio #2](https://github.com/popomore-org/folio-reader/pull/2) 以首次 CI 接入分支为临时基线。可信 Meta 仍要求该仓库的首次接入先进入默认分支。
+- 当宿主在 NSH 根组件挂载前移除视图，放弃已关闭视图的渲染。宿主释放时断开异步界面回调，避免关闭窗口或快速切换界面时操作已销毁的对象。
