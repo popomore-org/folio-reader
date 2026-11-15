@@ -32,6 +32,10 @@ jobs:
           rustup show active-toolchain
           node --version
           app="$(scripts/build-macos)"
+          preview="$app/Contents/PlugIns/FolioQuickLook.appex/Contents/Info.plist"
+          test "$(plutil -extract CFBundleIdentifier raw "$preview")" = org.popomore.folio.preview.quicklook
+          test "$(plutil -extract NSExtension.NSExtensionPointIdentifier raw "$preview")" = com.apple.quicklook.preview
+          test "$(plutil -extract NSExtension.NSExtensionAttributes.QLSupportedContentTypes.0 raw "$preview")" = net.daringfireball.markdown
           cli="$app/Contents/Helpers/folio"
           "$cli" --help
           test "$("$cli" --version)" = "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")"

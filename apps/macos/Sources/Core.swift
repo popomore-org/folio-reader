@@ -94,6 +94,17 @@ struct Core {
         body["op"] = operation
         body["root"] = root.path
         body["path"] = path
+        return try call(body)
+    }
+
+    static func renderMarkdown(_ source: String) throws -> Document.Preview {
+        guard let preview: Document.Preview = try call(["op": "render_markdown", "source": source]) else {
+            throw CoreError(message: "The reader did not return a Markdown preview.")
+        }
+        return preview
+    }
+
+    private static func call<T: Decodable>(_ body: [String: String]) throws -> T? {
         let data = try JSONEncoder().encode(body)
         let json = String(decoding: data, as: UTF8.self)
         guard let result = json.withCString({ folio_call($0) }) else {

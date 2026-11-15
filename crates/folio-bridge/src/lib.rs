@@ -6,6 +6,9 @@ use std::ffi::{CStr, CString, c_char};
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Request {
+    RenderMarkdown {
+        source: String,
+    },
     List {
         root: String,
         path: String,
@@ -38,6 +41,7 @@ enum Request {
 impl Request {
     fn run(self) -> Result<Value, folio_core::Error> {
         Ok(match self {
+            Self::RenderMarkdown { source } => json!(folio_core::render_markdown(&source)),
             Self::List { root, path } => json!(Workspace::open(root)?.list(path)?),
             Self::Read { root, path } => json!(Workspace::open(root)?.read(path)?),
             Self::Save {

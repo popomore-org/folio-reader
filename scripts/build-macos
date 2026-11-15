@@ -43,21 +43,25 @@ mkdir -p "$build"
 stage="$(mktemp -d "$build/stage.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT
 staged="$stage/$name.app"
+quicklook="$staged/Contents/PlugIns/FolioQuickLook.appex"
 mkdir -p "$staged/Contents/"{MacOS,Resources,Frameworks,Helpers} "$stage/app.iconset"
+mkdir -p "$quicklook/Contents/"{MacOS,Resources}
 
 rustup run "$rust_version" cargo build --locked --release --target "$target" -p folio-bridge >&2
 npm ci --prefix renderer --ignore-scripts --no-audit --no-fund >&2
 npm run --prefix renderer build -- "$staged/Contents/Resources" >&2
 cp apps/macos/Resources/* "$staged/Contents/Resources/"
 cp apps/macos/Info.plist "$staged/Contents/"
+cp apps/macos/QuickLook/Info.plist "$quicklook/Contents/"
+cp apps/macos/Resources/reader.css "$quicklook/Contents/Resources/"
 ditto "$sparkle/Sparkle.framework" "$staged/Contents/Frameworks/Sparkle.framework"
-python3 - "$staged/Contents/Info.plist" "$mode" "$name" "$bundle_id" "$version" "$build_number" <<'PLIST'
+python3 - "$staged/Contents/Info.plist" "$quicklook/Contents/Info.plist" "$mode" "$name" "$bundle_id" "$version" "$build_number" <<'PLIST'
 import base64
 import os
 import plistlib
 import sys
 
-path, mode, name, identifier, version, build = sys.argv[1:]
+path, extension_path, mode, name, identifier, version, build = sys.argv[1:]
 with open(path, "rb") as file:
     info = plistlib.load(file)
 info.update(CFBundleDisplayName=name, CFBundleName=name, CFBundleIdentifier=identifier,
@@ -78,6 +82,12 @@ if mode == "qa":
     info["NSAppTransportSecurity"] = {"NSAllowsLocalNetworking": True}
 with open(path, "wb") as file:
     plistlib.dump(info, file)
+with open(extension_path, "rb") as file:
+    extension = plistlib.load(file)
+extension.update(CFBundleIdentifier=identifier + ".quicklook",
+                 CFBundleShortVersionString=version, CFBundleVersion=build)
+with open(extension_path, "wb") as file:
+    plistlib.dump(extension, file)
 PLIST
 xcrun swift apps/macos/icon.swift "$stage/app.iconset"
 iconutil -c icns "$stage/app.iconset" -o "$staged/Contents/Resources/Folio.icns"
@@ -87,6 +97,14 @@ xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-erro
   apps/macos/Sources/*.swift "$CARGO_TARGET_DIR/$target/release/libfolio_bridge.a" \
   -lz -liconv -framework Security -framework SystemConfiguration -framework CoreFoundation \
   -o "$staged/Contents/MacOS/Folio"
+xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-errors -O \
+  -application-extension -parse-as-library -module-name FolioQuickLook \
+  -Xlinker -e -Xlinker _NSExtensionMain -Xlinker -dead_strip \
+  -import-objc-header apps/macos/Bridge.h \
+  apps/macos/Sources/Core.swift apps/macos/QuickLook/PreviewProvider.swift \
+  "$CARGO_TARGET_DIR/$target/release/libfolio_bridge.a" \
+  -lz -liconv -framework Security -framework SystemConfiguration -framework CoreFoundation \
+  -o "$quicklook/Contents/MacOS/FolioQuickLook"
 xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-errors -O \
   apps/macos/CLI/main.swift -o "$staged/Contents/Helpers/folio"
 sign=(--force --sign "$identity")
@@ -104,6 +122,7 @@ codesign "${sign[@]}" "$version_root/XPCServices/Downloader.xpc"
 codesign "${sign[@]}" "$version_root/XPCServices/Installer.xpc"
 codesign "${sign[@]}" "$framework"
 codesign "${sign[@]}" "$staged/Contents/Helpers/folio"
+codesign "${sign[@]}" --entitlements apps/macos/QuickLook/Entitlements.plist "$quicklook"
 codesign "${sign[@]}" "$staged"
 codesign --verify --deep --strict "$staged"
 rm -rf "$bundle"

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key><string>Folio Markdown Preview</string>
+    <key>CFBundleExecutable</key><string>FolioQuickLook</string>
+    <key>CFBundleName</key><string>Folio Markdown Preview</string>
+    <key>CFBundlePackageType</key><string>XPC!</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key><string>com.apple.quicklook.preview</string>
+        <key>NSExtensionPrincipalClass</key><string>FolioQuickLook.PreviewProvider</string>
+        <key>NSExtensionAttributes</key>
+        <dict>
+            <key>QLIsDataBasedPreview</key><true/>
+            <key>QLSupportedContentTypes</key>
+            <array>
+                <string>net.daringfireball.markdown</string>
+            </array>
+        </dict>
+    </dict>
+</dict>
+</plist>
