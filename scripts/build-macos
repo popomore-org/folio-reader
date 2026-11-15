@@ -54,6 +54,7 @@ cp apps/macos/Resources/* "$staged/Contents/Resources/"
 cp apps/macos/Info.plist "$staged/Contents/"
 cp apps/macos/QuickLook/Info.plist "$quicklook/Contents/"
 cp apps/macos/Resources/reader.css "$quicklook/Contents/Resources/"
+cp "$staged/Contents/Resources/reader.js" "$quicklook/Contents/Resources/"
 ditto "$sparkle/Sparkle.framework" "$staged/Contents/Frameworks/Sparkle.framework"
 python3 - "$staged/Contents/Info.plist" "$quicklook/Contents/Info.plist" "$mode" "$name" "$bundle_id" "$version" "$build_number" <<'PLIST'
 import base64
@@ -85,6 +86,7 @@ with open(path, "wb") as file:
 with open(extension_path, "rb") as file:
     extension = plistlib.load(file)
 extension.update(CFBundleIdentifier=identifier + ".quicklook",
+                 CFBundleName=name, CFBundleDisplayName=name,
                  CFBundleShortVersionString=version, CFBundleVersion=build)
 with open(extension_path, "wb") as file:
     plistlib.dump(extension, file)
@@ -101,7 +103,7 @@ xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-erro
   -application-extension -parse-as-library -module-name FolioQuickLook \
   -Xlinker -e -Xlinker _NSExtensionMain -Xlinker -dead_strip \
   -import-objc-header apps/macos/Bridge.h \
-  apps/macos/Sources/Core.swift apps/macos/QuickLook/PreviewProvider.swift \
+  apps/macos/Sources/Core.swift apps/macos/QuickLook/*.swift \
   "$CARGO_TARGET_DIR/$target/release/libfolio_bridge.a" \
   -lz -liconv -framework Security -framework SystemConfiguration -framework CoreFoundation \
   -o "$quicklook/Contents/MacOS/FolioQuickLook"

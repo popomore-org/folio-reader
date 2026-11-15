@@ -1,10 +1,13 @@
 import SwiftUI
 
 struct ReaderBreadcrumbs: View {
-    let location: FileLocation
+    @ObservedObject var tab: ReaderTab
+    let model: ReaderModel
+    let focusPane: () -> Void
     let open: (FileLocation) -> Void
 
     @State private var presentedPath: String?
+    private var location: FileLocation { tab.location }
 
     private struct Segment: Identifiable {
         let path: String
@@ -24,51 +27,109 @@ struct ReaderBreadcrumbs: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView(.horizontal) {
-                HStack(spacing: 2) {
-                    Image(systemName: "folder")
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    ForEach(segments) { segment in
-                        if !segment.path.isEmpty {
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 8, weight: .medium))
-                                .foregroundStyle(.tertiary)
-                                .accessibilityHidden(true)
-                        }
-                        button(segment)
-                    }
-                }
-                .padding(.horizontal, 9)
+        HStack(spacing: 6) {
+            breadcrumbs
+            fileActions
                 .fixedSize(horizontal: true, vertical: false)
-                .frame(minWidth: geometry.size.width, minHeight: geometry.size.height, alignment: .leading)
-            }
-            .scrollIndicators(.hidden)
-            .defaultScrollAnchor(.trailing)
-            .accessibilityLabel("File Path")
+                .padding(.trailing, 9)
         }
         .font(.system(size: 11))
         .frame(height: 26)
         .background(WorkspaceStyle.surface)
     }
 
+    private var breadcrumbs: some View {
+        let path = segments
+        return ViewThatFits(in: .horizontal) {
+            pathRow(path).fixedSize(horizontal: true, vertical: false)
+            HStack(spacing: 2) {
+                ScrollView(.horizontal) {
+                    pathRow(Array(path.dropLast()))
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .scrollIndicators(.hidden)
+                .defaultScrollAnchor(.trailing)
+
+                if let file = path.last {
+                    HStack(spacing: 2) { breadcrumb(file) }
+                        .layoutPriority(1)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, 9)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("File Path")
+    }
+
+    private func pathRow(_ path: [Segment]) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "folder")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            ForEach(path) { segment in breadcrumb(segment) }
+        }
+    }
+
+    @ViewBuilder
+    private func breadcrumb(_ segment: Segment) -> some View {
+        if !segment.path.isEmpty {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        }
+        button(segment)
+    }
+
+    private var fileActions: some View {
+        HStack(spacing: 6) {
+            Picker("Document Mode", selection: Binding(get: { tab.mode }, set: { mode in
+                focusPane()
+                tab.setMode(mode)
+            })) {
+                Label("Reading", systemImage: "doc")
+                    .labelStyle(.iconOnly)
+                    .tag(ReaderMode.reading)
+                Label("Source", systemImage: "chevron.left.forwardslash.chevron.right")
+                    .labelStyle(.iconOnly)
+                    .tag(ReaderMode.source)
+                Label("Source and Preview", systemImage: "rectangle.split.2x1")
+                    .labelStyle(.iconOnly)
+                    .tag(ReaderMode.split)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .disabled(!tab.canEdit)
+            .help(tab.canEdit ? "Reading, Source, or Source and Preview" : "This file is read-only in Folio")
+
+            if let file = location.url {
+                OpenWithMenu(file: file, model: model, showsIcon: true)
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.visible)
+                    .help("Open With Another Application")
+            }
+        }
+        .controlSize(.small)
+    }
+
     private func button(_ segment: Segment) -> some View {
         let currentFile = segment.path == location.path
+        let isPresented = presentedPath == segment.path
         let folder = currentFile ? segment.path.split(separator: "/").dropLast().joined(separator: "/") : segment.path
         return Button {
             presentedPath = presentedPath == segment.path ? nil : segment.path
         } label: {
             Text(segment.name)
-                .fontWeight(currentFile ? .medium : .regular)
-                .foregroundStyle(currentFile ? .primary : .secondary)
+                .font(.system(size: WorkspaceStyle.detailTextSize, weight: currentFile ? .medium : .regular))
+                .foregroundStyle(currentFile || isPresented ? Color.primary : WorkspaceStyle.secondaryText)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .padding(.horizontal, 5)
                 .frame(maxWidth: 160, minHeight: 21)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(WorkspaceButton(selected: presentedPath == segment.path))
+        .buttonStyle(WorkspaceButton(selected: isPresented))
         .accessibilityHint(currentFile ? "Browse files in this folder" : "Browse this folder")
         .help(segment.path.isEmpty ? location.root.path : segment.path)
         .popover(isPresented: Binding(

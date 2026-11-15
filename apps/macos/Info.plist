@@ -14,6 +14,14 @@
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.popomore.folio.reader-tab</string>
+            <key>UTTypeDescription</key><string>Folio Reader Tab</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+        </dict>
+    </array>
     <key>UTImportedTypeDeclarations</key>
     <array>
         <dict>
@@ -24,7 +32,84 @@
             <key>UTTypeTagSpecification</key>
             <dict>
                 <key>public.filename-extension</key>
-                <array><string>md</string><string>markdown</string></array>
+                <array><string>md</string><string>markdown</string><string>mdown</string><string>mkd</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.popomore.folio.json-lines</string>
+            <key>UTTypeDescription</key><string>JSON Lines Document</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.plain-text</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>jsonl</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.popomore.folio.configuration</string>
+            <key>UTTypeDescription</key><string>Configuration File</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.plain-text</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>conf</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>com.microsoft.ini</string>
+            <key>UTTypeDescription</key><string>INI Configuration File</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.plain-text</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>ini</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.popomore.folio.source-code</string>
+            <key>UTTypeDescription</key><string>Source File</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.source-code</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>rs</string><string>jsx</string><string>go</string><string>kt</string><string>scss</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>com.microsoft.typescript</string>
+            <key>UTTypeDescription</key><string>TypeScript Source</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.source-code</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>ts</string><string>tsx</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.popomore.folio.mermaid</string>
+            <key>UTTypeDescription</key><string>Mermaid Diagram</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.plain-text</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>mmd</string><string>mermaid</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.popomore.folio.vega-lite</string>
+            <key>UTTypeDescription</key><string>Vega-Lite Chart</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.json</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>vl</string></array>
             </dict>
         </dict>
     </array>

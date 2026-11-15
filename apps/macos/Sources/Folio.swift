@@ -15,10 +15,9 @@ struct Folio: App {
     private var workspaceFocused: Bool { quickPreviewActive != true }
 
     var body: some Scene {
-        WindowGroup("Folio", id: "workspace") {
+        Window("Folio", id: "workspace") {
             WorkspaceSceneContent(delegate: delegate, model: model, updates: updates)
         }
-        .handlesExternalEvents(matching: [])
         .defaultSize(width: 1130, height: 760)
         .commands {
             CommandGroup(after: .appInfo) {
@@ -43,7 +42,7 @@ struct Folio: App {
                 Button("Find in Document") { model.active?.finding = true }
                     .keyboardShortcut("f").disabled(!workspaceFocused || model.active?.canFind != true || model.showingGit)
                 Button(model.active?.editing == true ? "Return to Reading" : "Edit Source") {
-                    if let active = model.active { active.setEditing(!active.editing) }
+                    if let active = model.active { active.setMode(active.editing ? .reading : .source) }
                 }
                 .keyboardShortcut("e")
                 .disabled(!workspaceFocused || model.active?.canEdit != true || model.showingGit)
@@ -103,15 +102,9 @@ final class FolioDelegate: NSObject, NSApplicationDelegate {
     }
 
     func registerWorkspace(model: ReaderModel, openWindow: OpenWindowAction) {
-        showWorkspace = { [weak self, weak model] urls in
-            if let window = NSApp.windows.first(where: { $0.identifier == WindowOwner.identifier && ($0.isVisible || $0.isMiniaturized) }) {
-                model?.openURLs(urls)
-                if window.isMiniaturized { window.deminiaturize(nil) }
-                window.makeKeyAndOrderFront(nil)
-            } else {
-                self?.pending.append(contentsOf: urls)
-                openWindow(id: "workspace")
-            }
+        showWorkspace = { [weak model] urls in
+            model?.openURLs(urls)
+            openWindow(id: "workspace")
         }
     }
 
@@ -170,7 +163,6 @@ private struct PreviewSceneContent: View {
 }
 
 struct WindowOwner: NSViewRepresentable {
-    static let identifier = NSUserInterfaceItemIdentifier("folio.workspace")
     let model: ReaderModel
     let updates: FolioUpdates
 
@@ -185,6 +177,8 @@ struct WindowOwner: NSViewRepresentable {
         weak var model: ReaderModel?
         weak var updates: FolioUpdates?
         nonisolated(unsafe) weak var previous: (any NSWindowDelegate)?
+        private var titleBarMonitor: Any?
+        private var titleBarClickFrame: NSRect?
 
         init(model: ReaderModel, updates: FolioUpdates) {
             self.model = model
@@ -196,13 +190,57 @@ struct WindowOwner: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            guard let window, window.delegate !== self else { return }
+            if let titleBarMonitor {
+                NSEvent.removeMonitor(titleBarMonitor)
+                self.titleBarMonitor = nil
+            }
+            titleBarClickFrame = nil
+            guard let window else { return }
+            titleBarMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] event in
+                guard let self else { return event }
+                return handleTitleBarClick(event)
+            }
+
+            guard window.delegate !== self else { return }
             previous = window.delegate
             window.delegate = self
-            window.identifier = WindowOwner.identifier
+            window.backgroundColor = NSColor(WorkspaceStyle.surface)
             if InstanceMode.isSeparate { window.isRestorable = false }
             window.tabbingMode = .disallowed
             DispatchQueue.main.async { [weak self, weak window] in self?.updates?.offerUpdateChecks(on: window) }
+        }
+
+        private func handleTitleBarClick(_ event: NSEvent) -> NSEvent? {
+            let clickFrame = titleBarClickFrame
+            titleBarClickFrame = nil
+            guard let window, event.window === window else { return event }
+
+            if event.type == .leftMouseUp {
+                guard let clickFrame else { return event }
+                DispatchQueue.main.async { [weak window] in
+                    guard let window, window.frame == clickFrame else { return }
+                    window.zoom(nil)
+                }
+                return nil
+            }
+
+            let location = event.locationInWindow
+            guard event.clickCount == 2,
+                  window.attachedSheet == nil, window.styleMask.contains(.resizable),
+                  !window.styleMask.contains(.fullScreen),
+                  location.y >= window.contentLayoutRect.maxY,
+                  let frameView = window.contentView?.superview else { return event }
+            let windowButtons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+            let controls = windowButtons.compactMap(window.standardWindowButton)
+                + (window.toolbar?.visibleItems ?? []).compactMap(\.view)
+            if controls.contains(where: { !$0.isHidden && $0.bounds.contains($0.convert(location, from: nil)) }) {
+                return event
+            }
+            let point = frameView.superview?.convert(location, from: nil) ?? location
+            guard frameView.hitTest(point)?.mouseDownCanMoveWindow == true else { return event }
+
+            titleBarClickFrame = window.frame
+            return nil
         }
 
         override func responds(to aSelector: Selector!) -> Bool {

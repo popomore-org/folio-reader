@@ -42,9 +42,8 @@ impl FileKind {
             "html" | "htm" => Self::Html,
             "rtf" => Self::Rtf,
             "pdf" => Self::Pdf,
-            "png" | "jpeg" | "jpg" | "gif" | "webp" | "heic" | "tif" | "tiff" | "bmp" | "avif" => {
-                Self::Image
-            }
+            "png" | "jpeg" | "jpg" | "gif" | "webp" | "heic" | "tif" | "tiff" | "bmp" | "avif"
+            | "svg" => Self::Image,
             "mp3" | "m4a" | "aac" | "wav" | "aiff" | "caf" | "flac" => Self::Audio,
             "mp4" | "m4v" | "mov" => Self::Video,
             "csv" | "tsv" => Self::Table,
@@ -110,25 +109,35 @@ impl Document {
 
     pub(crate) fn load_text(&mut self, bytes: &[u8], path: &Path) -> Result<(), Error> {
         let (source, _) = decode_text(bytes)?;
-        let preview = match self.kind {
-            FileKind::Markdown => render_markdown(source),
-            FileKind::Html => Preview::from_html(sanitize_html(source)),
-            FileKind::Text => {
-                Preview::from_html(format!("<pre class=\"plain\">{}</pre>", escape(source)))
-            }
-            FileKind::Mermaid => diagram("mermaid", source),
-            FileKind::Vega => diagram("vega-lite", source),
-            FileKind::Table => table(
-                source,
-                path.extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("tsv")),
-            )?,
-            _ => return Ok(()),
-        };
+        self.preview = text_preview(self.kind, path, source)?;
         self.source = self.kind.editable().then(|| source.to_owned());
-        self.preview = Some(preview);
         Ok(())
     }
+}
+
+/// Render already-authorized file contents without opening a directory or any
+/// other file. Formats rendered by the host return `None`.
+pub fn render_text_preview(path: &Path, source: &str) -> Result<Option<Preview>, Error> {
+    let (source, _) = decode_text(source.as_bytes())?;
+    text_preview(FileKind::from_path(path), path, source)
+}
+
+fn text_preview(kind: FileKind, path: &Path, source: &str) -> Result<Option<Preview>, Error> {
+    Ok(Some(match kind {
+        FileKind::Markdown => render_markdown(source),
+        FileKind::Html => Preview::from_html(sanitize_html(source)),
+        FileKind::Text => {
+            Preview::from_html(format!("<pre class=\"plain\">{}</pre>", escape(source)))
+        }
+        FileKind::Mermaid => diagram("mermaid", source),
+        FileKind::Vega => diagram("vega-lite", source),
+        FileKind::Table => table(
+            source,
+            path.extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("tsv")),
+        )?,
+        _ => return Ok(None),
+    }))
 }
 
 #[derive(Debug, Serialize)]

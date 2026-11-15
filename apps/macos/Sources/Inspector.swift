@@ -6,8 +6,9 @@ struct Inspector: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Outline").font(.callout.weight(.semibold))
-                .padding(.horizontal, 12).frame(height: 33)
-            WorkspaceRule()
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .workspaceHeader()
             if let tab {
                 TabOutline(tab: tab)
             } else {
@@ -23,7 +24,7 @@ private struct TabOutline: View {
     @ObservedObject var tab: ReaderTab
 
     var body: some View {
-        let headings = tab.document?.preview?.headings ?? []
+        let headings = tab.preview?.headings ?? []
         if headings.isEmpty {
             Text("No headings in this file.").font(.callout).foregroundStyle(.secondary).padding(12)
         } else {
@@ -39,7 +40,7 @@ private struct TabOutline: View {
                                 .padding(.leading, CGFloat(max(0, heading.level - 1) * 9))
                                 .padding(.vertical, 5)
                         }
-                        .buttonStyle(.plain).help(heading.title).disabled(tab.editing)
+                        .buttonStyle(.plain).help(heading.title).disabled(tab.mode == .source || tab.previewError != nil)
                     }
                 }.padding(11)
             }

@@ -97,11 +97,13 @@ struct Core {
         return try call(body)
     }
 
-    static func renderMarkdown(_ source: String) throws -> Document.Preview {
-        guard let preview: Document.Preview = try call(["op": "render_markdown", "source": source]) else {
-            throw CoreError(message: "The reader did not return a Markdown preview.")
-        }
-        return preview
+    static func kind(of name: String) throws -> FileKind {
+        let kind: FileKind? = try call(["op": "file_kind", "name": name])
+        return kind ?? .other
+    }
+
+    static func textPreview(for name: String, source: String) throws -> Document.Preview? {
+        try call(["op": "render_text_preview", "name": name, "source": source])
     }
 
     private static func call<T: Decodable>(_ body: [String: String]) throws -> T? {

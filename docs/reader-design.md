@@ -28,6 +28,10 @@
 
 VS Code 的文件图标主题将文件名、扩展名和语言 ID 映射到图标，编辑器分栏各自维护标签。Material Icon Theme 有 MIT 许可、文件名和扩展名映射及灰度选项；引入整套主题会增加素材和更新维护。本版沿用其匹配顺序的思路，按典型文件名、扩展名和预览类别映射到系统 SF Symbols。图标使用同一色调，选中状态通过行背景区分。[VS Code 界面](https://code.visualstudio.com/docs/editing/getting-started/userinterface) · [File Icon Theme](https://code.visualstudio.com/api/extension-guides/file-icon-theme) · [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme)
 
+底栏目录树入口参考 Zed 的分支和实心节点，使用 Folio 自己的 SVG。图标随浅色、深色外观着色，按钮提供悬停提示和 VoiceOver 名称。[Zed 目录树图标](https://github.com/zed-industries/zed/blob/v1.28.1/assets/icons/file_tree.svg)
+
+底栏大纲和文件行的 Open As 分别使用 Lucide 的 `list-tree` 与 `external-link`。Open As 由系统菜单提供下拉指示和应用图标。[Lucide 图标许可](https://lucide.dev/license)
+
 ## 主题互操作
 
 - Typora 的主题属于基于自身 DOM 约定的 CSS，Obsidian 的主题也依赖应用暴露的变量和选择器。可以参考作品的排版参数，套用完整 CSS 时仍依赖目标产品的 DOM。[Typora 主题文档](https://theme.typora.io/doc/) · [Obsidian 外观](https://obsidian.md/help/appearance)

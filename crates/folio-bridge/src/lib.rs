@@ -1,12 +1,19 @@
-use folio_core::{Revision, Workspace};
+use folio_core::{FileKind, Revision, Workspace};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::ffi::{CStr, CString, c_char};
+use std::{
+    ffi::{CStr, CString, c_char},
+    path::Path,
+};
 
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Request {
-    RenderMarkdown {
+    FileKind {
+        name: String,
+    },
+    RenderTextPreview {
+        name: String,
         source: String,
     },
     List {
@@ -41,7 +48,10 @@ enum Request {
 impl Request {
     fn run(self) -> Result<Value, folio_core::Error> {
         Ok(match self {
-            Self::RenderMarkdown { source } => json!(folio_core::render_markdown(&source)),
+            Self::FileKind { name } => json!(FileKind::from_path(Path::new(&name))),
+            Self::RenderTextPreview { name, source } => {
+                json!(folio_core::render_text_preview(Path::new(&name), &source)?)
+            }
             Self::List { root, path } => json!(Workspace::open(root)?.list(path)?),
             Self::Read { root, path } => json!(Workspace::open(root)?.read(path)?),
             Self::Save {

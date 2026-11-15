@@ -30,7 +30,7 @@ struct ReaderWindow: View {
                 }
                 if model.inspector, !model.showingGit {
                     Inspector(tab: model.active)
-                        .frame(minWidth: 150, idealWidth: 185, maxWidth: 230)
+                        .frame(minWidth: 150, idealWidth: 264, maxWidth: 300)
                 }
             }
             WorkspaceRule()
@@ -41,33 +41,6 @@ struct ReaderWindow: View {
         .toolbarBackground(.visible, for: .windowToolbar)
         .navigationTitle(model.showingGit ? "Git" : model.active?.title ?? "Folio")
         .navigationSubtitle(model.showingGit ? model.gitLocation?.displayPath ?? "" : "")
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                if let active = model.active, !model.showingGit {
-                    HStack(spacing: 6) {
-                        Text("Edit").font(.callout).accessibilityHidden(true)
-                        Toggle("Edit Source", isOn: Binding(get: { active.editing }, set: active.setEditing))
-                            .toggleStyle(.switch)
-                            .labelsHidden()
-                            .controlSize(.small)
-                            .help(active.canEdit ? "Switch Between Reading and Editing (⌘E)" : "This file is read-only in Folio")
-                    }
-                    .disabled(!active.canEdit)
-                    if active.editing {
-                        Button("Save") { active.save() }.disabled(!active.dirty)
-                    } else {
-                        Button("Find", systemImage: "magnifyingglass") { active.finding.toggle() }
-                            .disabled(!active.canFind)
-                            .help("Find in Document (⌘F)")
-                    }
-                }
-                Button("Outline", systemImage: "sidebar.right") { model.inspector.toggle() }
-                    .help("Toggle Outline")
-                    .disabled(model.active?.document?.preview == nil || model.showingGit)
-                Button("Settings", systemImage: "gearshape") { openSettings() }
-                    .help("Settings (⌘,)")
-            }
-        }
         .alert("Folio", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }
@@ -77,22 +50,41 @@ struct ReaderWindow: View {
 struct ReaderPane: View {
     @ObservedObject var model: ReaderModel
     let pane: Pane
+    @State private var tabFrames: [UUID: CGRect] = [:]
+    @State private var insertionX: CGFloat?
+    @State private var targetingEmptyPane = false
+    @State private var readerWidth: CGFloat = 0
+    @State private var targetingSplit = false
 
     var body: some View {
         let group = model.groups[pane] ?? ReaderModel.Group()
         VStack(spacing: 0) {
             tabBar(group)
-            if let active = group.active {
-                ReaderBreadcrumbs(location: active.location) { location in
+            if let tab = group.active {
+                ReaderBreadcrumbs(tab: tab, model: model, focusPane: { model.focus(pane) }) { location in
                     model.focus(pane)
                     model.open(location)
                 }
-                .id(active.id)
+                .id(tab.id)
                 WorkspaceRule()
-            }
-            if let tab = group.active {
                 TabDocument(tab: tab, appearance: model.appearance, setMediaActivity: model.setMediaActivity, follow: { model.follow($0, from: tab) })
                     .id(tab.id)
+                    .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { readerWidth = $0 }
+                    .overlay(alignment: .trailing) {
+                        if !model.split {
+                            Color.clear
+                                .frame(width: readerWidth / 4)
+                                .onDrop(of: [TabDrag.type], delegate: SplitOnTabDrop(model: model, targetingSplit: $targetingSplit))
+                        }
+                    }
+                    .overlay(alignment: .trailing) {
+                        if targetingSplit && !model.split {
+                            Rectangle().fill(WorkspaceStyle.focus.opacity(0.12))
+                                .overlay { Rectangle().strokeBorder(WorkspaceStyle.focus, lineWidth: 1) }
+                                .frame(width: readerWidth / 2)
+                                .allowsHitTesting(false).accessibilityHidden(true)
+                        }
+                    }
             } else {
                 ContentUnavailableView {
                     Label(model.split ? "Open a file in this pane" : "Open a file", systemImage: "doc.text")
@@ -102,6 +94,16 @@ struct ReaderPane: View {
                     Button("Open File…") { model.focus(pane); model.choose() }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onDrop(of: [TabDrag.type], isTargeted: $targetingEmptyPane) { providers in
+                    TabDrag.receive(providers, in: pane, before: nil, model: model)
+                }
+                .overlay {
+                    if targetingEmptyPane {
+                        Rectangle().strokeBorder(WorkspaceStyle.focus, lineWidth: 2)
+                            .allowsHitTesting(false).accessibilityHidden(true)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -114,54 +116,54 @@ struct ReaderPane: View {
     }
 
     private func tabBar(_ group: ReaderModel.Group) -> some View {
-        HStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal) {
-                    HStack(spacing: 0) {
-                        ForEach(group.tabs) { tab in
-                            TabButton(model: model, pane: pane, tab: tab, selected: group.selected == tab.id,
-                                      focused: model.focusedPane == pane)
-                                .id(tab.id)
-                            WorkspaceRule(vertical: true)
-                                .frame(height: 30)
-                        }
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(group.tabs) { tab in
+                        TabButton(model: model, pane: pane, tab: tab, selected: group.selected == tab.id,
+                                  focused: model.focusedPane == pane)
+                            .id(tab.id)
+                            .background {
+                                GeometryReader { geometry in
+                                    Color.clear.preference(key: TabFrames.self, value: [tab.id: geometry.frame(in: .named(pane))])
+                                }
+                            }
+                        WorkspaceRule(vertical: true)
+                            .frame(height: 30)
                     }
                 }
-                .scrollIndicators(.hidden)
-                .onChange(of: group.selected, initial: true) { _, selected in
-                    if let selected { proxy.scrollTo(selected) }
-                }
             }
-            .accessibilityLabel("\(pane.label) Tabs")
-            HStack(spacing: 2) {
-                Button {
-                    model.focus(pane)
-                    model.choose()
-                } label: {
-                    Image(systemName: "plus").frame(width: 25, height: 25)
-                }
-                .buttonStyle(WorkspaceButton())
-                .accessibilityLabel("Open File in \(pane.label) Pane")
-                .help("Open File")
-                if !model.split || pane == .right {
-                    Button(action: model.toggleSplit) {
-                        Image(systemName: model.split ? "rectangle" : "rectangle.split.2x1")
-                            .frame(width: 25, height: 25)
-                    }
-                    .buttonStyle(WorkspaceButton())
-                    .accessibilityLabel(model.split ? "Merge Panes" : "Split Right")
-                    .help(model.split ? "Merge Panes" : "Split Right")
-                }
+            .scrollIndicators(.hidden)
+            .onChange(of: group.selected, initial: true) { _, selected in
+                if let selected { proxy.scrollTo(selected) }
             }
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 4)
         }
-        .frame(height: 31)
-        .background(WorkspaceStyle.surface)
-        .overlay(alignment: .bottom) { WorkspaceRule() }
+        .accessibilityLabel("\(pane.label) Tabs")
+        .workspaceHeader()
+        .coordinateSpace(.named(pane))
+        .onPreferenceChange(TabFrames.self) { tabFrames = $0 }
+        .contentShape(Rectangle())
+        .onDrop(of: [TabDrag.type], delegate: TabStripDrop(model: model, pane: pane, tabs: group.tabs.map(\.id),
+                                                          frames: tabFrames, insertionX: $insertionX))
+        .overlay(alignment: .topLeading) {
+            if let insertionX {
+                GeometryReader { geometry in
+                    Rectangle().fill(WorkspaceStyle.focus).frame(width: 2)
+                        .offset(x: max(0, min(insertionX, geometry.size.width - 2)))
+                }
+                .allowsHitTesting(false).accessibilityHidden(true)
+            }
+        }
     }
 
+}
+
+private struct TabFrames: PreferenceKey {
+    static let defaultValue: [UUID: CGRect] = [:]
+
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
 }
 
 private struct TabButton: View {
@@ -172,19 +174,24 @@ private struct TabButton: View {
     let focused: Bool
 
     var body: some View {
+        let weight: Font.Weight = selected ? .medium : .regular
         HStack(spacing: 2) {
             Button {
                 model.activate(tab, in: pane)
             } label: {
                 HStack(spacing: 5) {
                     FileIcon(name: tab.title, kind: tab.document?.kind)
-                    Text(tab.title).lineLimit(1).truncationMode(.middle)
+                    Text(tab.title)
+                        .font(.system(size: WorkspaceStyle.navigationTextSize, weight: weight))
+                        .foregroundStyle(selected ? Color.primary : WorkspaceStyle.secondaryText)
+                        .lineLimit(1).truncationMode(.middle)
                 }
                 .padding(.leading, 7)
                 .padding(.vertical, 5)
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(selected ? .isSelected : [])
+            .onDrag { TabDrag.itemProvider(for: tab.id) }
             Button { model.close(tab, in: pane) } label: {
                 Image(systemName: tab.dirty ? "circle.fill" : "xmark")
                     .font(.system(size: tab.dirty ? 6 : 8, weight: .semibold))
@@ -195,8 +202,7 @@ private struct TabButton: View {
             .foregroundStyle(.secondary)
             .accessibilityLabel("Close \(tab.title)")
         }
-        .font(.system(size: 12, weight: selected ? .medium : .regular))
-        .foregroundStyle(selected ? .primary : .secondary)
+        .font(.system(size: 12, weight: weight))
         .frame(maxWidth: 218)
         .frame(height: 30)
         .background(selected ? (focused ? WorkspaceStyle.selection : WorkspaceStyle.hover) : .clear)
@@ -226,6 +232,27 @@ struct TabDocument: View {
     @FocusState private var findFocus: Bool
 
     var body: some View {
+        Group {
+            switch tab.mode {
+            case .reading:
+                readingPane
+            case .source:
+                SourceEditor(text: $tab.draft)
+            case .split:
+                ReaderSplit(isSplit: true, minimumPaneWidth: 125) {
+                    SourceEditor(text: $tab.draft)
+                } right: {
+                    readingPane
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .alert("Folio", isPresented: Binding(get: { tab.error != nil }, set: { if !$0 { tab.error = nil } })) {
+            Button("OK") { tab.error = nil }
+        } message: { Text(tab.error ?? "") }
+    }
+
+    private var readingPane: some View {
         VStack(spacing: 0) {
             if tab.finding, tab.canFind {
                 HStack(spacing: 7) {
@@ -244,27 +271,24 @@ struct TabDocument: View {
                 .onExitCommand { tab.finding = false }
                 Divider()
             }
-            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+            readingContent.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .alert("Folio", isPresented: Binding(get: { tab.error != nil }, set: { if !$0 { tab.error = nil } })) {
-            Button("OK") { tab.error = nil }
-        } message: { Text(tab.error ?? "") }
     }
 
     @ViewBuilder
-    private var content: some View {
+    private var readingContent: some View {
         if tab.loading {
             ProgressView("Opening \(tab.title)…").controlSize(.small)
+        } else if let error = tab.previewError {
+            ContentUnavailableView("Preview unavailable", systemImage: "doc", description: Text(error))
         } else if let error = tab.loadError {
             ContentUnavailableView {
                 Label("Couldn’t open this file", systemImage: "exclamationmark.circle")
             } description: { Text(error) } actions: {
                 Button("Reload from Disk", action: tab.load)
             }
-        } else if tab.editing {
-            SourceEditor(text: $tab.draft)
         } else if let document = tab.document, let file = tab.location.url {
-            if let preview = document.preview {
+            if let preview = tab.preview {
                 ReaderWeb(tab: tab, follow: follow, root: tab.location.root, path: tab.location.path,
                           html: preview.html, appearance: appearance)
             } else {
@@ -308,49 +332,92 @@ struct StatusBar: View {
     @ObservedObject var model: ReaderModel
 
     var body: some View {
-        HStack(spacing: 9) {
-            Button {
-                model.sidebar.toggle()
-            } label: {
-                Image(systemName: "sidebar.left").frame(width: 25, height: 23)
-            }
-            .buttonStyle(WorkspaceButton(selected: model.sidebar))
-            .accessibilityLabel(model.sidebar ? "Hide Folder Tree" : "Show Folder Tree")
-            .help("Toggle Folder Tree")
-            Button {
-                model.showingGit.toggle()
-            } label: {
-                Label(model.showingGit ? "Back to Reading" : "Git", systemImage: "arrow.triangle.branch")
-                    .padding(.horizontal, 6).frame(height: 23)
-            }
-            .buttonStyle(WorkspaceButton(selected: model.showingGit))
-            .disabled(model.gitLocation == nil)
-            .help(model.showingGit ? "Back to Reading" : "Open Git View")
-            Spacer(minLength: 6)
+        HStack(spacing: 6) {
+            workspaceControls
+            Spacer(minLength: 12)
             if let tab = model.active, !model.showingGit {
-                Text(state(tab))
-                if let document = tab.document {
-                    Text(document.kind.label)
-                    Text(ByteCountFormatter.string(fromByteCount: document.bytes, countStyle: .file))
-                }
-                if model.split { Text(model.focusedPane.label + " Pane") }
-            } else if !model.showingGit {
-                Text("\(model.folders.count) \(model.folders.count == 1 ? "folder" : "folders")")
+                DocumentStatus(tab: tab, pane: model.split ? model.focusedPane : nil)
+                WorkspaceRule(vertical: true).frame(height: 14)
             }
+            readingControls
         }
-        .font(.system(size: 11))
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 7)
-        .frame(height: 26)
+        .padding(.horizontal, 6)
+        .frame(height: 30)
         .background(WorkspaceStyle.surface)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Status Bar")
     }
 
-    private func state(_ tab: ReaderTab) -> String {
+    private var workspaceControls: some View {
+        HStack(spacing: 4) {
+            iconButton(model.sidebar ? "Hide Folder Tree" : "Show Folder Tree", selected: model.sidebar,
+                       action: { model.sidebar.toggle() }) {
+                WorkspaceIcon.folderTree
+            }
+            iconButton(model.showingGit ? "Back to Reading" : "Open Git View", selected: model.showingGit,
+                       action: { model.showingGit.toggle() }) {
+                Image(systemName: "arrow.triangle.branch")
+            }
+            .disabled(model.gitLocation == nil)
+        }
+    }
+
+    private var readingControls: some View {
+        HStack(spacing: 4) {
+            iconButton(model.split ? "Merge Panes" : "Split Right", selected: model.split, action: model.toggleSplit) {
+                Image(systemName: "rectangle.split.2x1")
+            }
+            iconButton(model.inspector ? "Hide Outline" : "Show Outline", selected: model.inspector,
+                       action: { model.inspector.toggle() }) {
+                WorkspaceIcon.outline
+            }
+                .disabled(!model.inspector && model.active?.preview == nil)
+        }
+        .disabled(model.showingGit)
+    }
+
+    private func iconButton<Icon: View>(_ title: String, selected: Bool, action: @escaping () -> Void,
+                                        @ViewBuilder icon: () -> Icon) -> some View {
+        Button(action: action) {
+            icon()
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 27, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(WorkspaceButton(selected: selected))
+        .accessibilityLabel(title)
+        .help(title)
+    }
+}
+
+private struct DocumentStatus: View {
+    @ObservedObject var tab: ReaderTab
+    let pane: Pane?
+
+    var body: some View {
+        HStack(spacing: 9) {
+            if let state {
+                Text(state)
+                    .foregroundStyle(tab.dirty ? WorkspaceStyle.focus : Color.primary)
+            }
+            if let document = tab.document {
+                Text(document.kind.label)
+                Text(ByteCountFormatter.string(fromByteCount: document.bytes, countStyle: .file))
+            }
+            if let pane { Text(pane.label + " Pane") }
+        }
+        .font(.system(size: WorkspaceStyle.detailTextSize))
+        .foregroundStyle(WorkspaceStyle.secondaryText)
+        .lineLimit(1)
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var state: String? {
         if tab.loading { return "Opening…" }
         if tab.loadError != nil { return "Unavailable" }
         if tab.dirty { return "Unsaved" }
-        return tab.editing ? "Editing" : "Reading"
+        return tab.editing ? "Editing" : nil
     }
 }
