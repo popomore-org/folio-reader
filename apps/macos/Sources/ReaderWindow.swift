@@ -22,11 +22,11 @@ struct ReaderWindow: View {
                         .id(location)
                         .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    HSplitView {
-                        reader(.left)
-                        if model.split { reader(.right) }
+                    ReaderSplit(isSplit: model.split) {
+                        ReaderPane(model: model, pane: .left)
+                    } right: {
+                        ReaderPane(model: model, pane: .right)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 if model.inspector, !model.showingGit {
                     Inspector(tab: model.active)
@@ -66,11 +66,6 @@ struct ReaderWindow: View {
         .alert("Folio", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }
-    }
-
-    private func reader(_ pane: Pane) -> some View {
-        ReaderPane(model: model, pane: pane)
-            .frame(minWidth: 265, maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
