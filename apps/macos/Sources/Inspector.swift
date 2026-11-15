@@ -6,8 +6,9 @@ struct Inspector: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Outline").font(.callout.weight(.semibold))
-                .padding(.horizontal, 12).frame(height: 33)
-            WorkspaceRule()
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .workspaceHeader()
             if let tab {
                 TabOutline(tab: tab)
             } else {

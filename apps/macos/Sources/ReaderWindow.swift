@@ -43,29 +43,22 @@ struct ReaderWindow: View {
         .navigationSubtitle(model.showingGit ? model.gitLocation?.displayPath ?? "" : "")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                if let active = model.active, !model.showingGit {
-                    HStack(spacing: 6) {
-                        Text("Edit").font(.callout).accessibilityHidden(true)
-                        Toggle("Edit Source", isOn: Binding(get: { active.editing }, set: active.setEditing))
-                            .toggleStyle(.switch)
-                            .labelsHidden()
-                            .controlSize(.small)
-                            .help(active.canEdit ? "Switch Between Reading and Editing (⌘E)" : "This file is read-only in Folio")
-                    }
-                    .disabled(!active.canEdit)
-                    if active.editing {
-                        Button("Save") { active.save() }.disabled(!active.dirty)
-                    } else {
-                        Button("Find", systemImage: "magnifyingglass") { active.finding.toggle() }
-                            .disabled(!active.canFind)
-                            .help("Find in Document (⌘F)")
+                if let tab = model.active, !model.showingGit {
+                    Toggle("Find", systemImage: "magnifyingglass", isOn: Binding(get: { tab.finding }, set: { tab.finding = $0 }))
+                        .toggleStyle(.button)
+                        .labelStyle(.iconOnly)
+                        .disabled(!tab.canFind)
+                        .help(tab.finding ? "Hide Find Bar" : "Find in Document (⌘F)")
+                    Toggle("Outline", systemImage: "sidebar.right", isOn: $model.inspector)
+                        .toggleStyle(.button)
+                        .labelStyle(.iconOnly)
+                        .disabled(!model.inspector && tab.document?.preview == nil)
+                        .help(model.inspector ? "Hide Outline (⌥⌘I)" : "Show Outline (⌥⌘I)")
+                    if let file = tab.location.url {
+                        OpenWithMenu(file: file, model: model, usesToolbarIcon: true)
+                            .help("Open With Another Application")
                     }
                 }
-                Button("Outline", systemImage: "sidebar.right") { model.inspector.toggle() }
-                    .help("Toggle Outline")
-                    .disabled(model.active?.document?.preview == nil || model.showingGit)
-                Button("Settings", systemImage: "gearshape") { openSettings() }
-                    .help("Settings (⌘,)")
             }
         }
         .alert("Folio", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
@@ -82,15 +75,13 @@ struct ReaderPane: View {
         let group = model.groups[pane] ?? ReaderModel.Group()
         VStack(spacing: 0) {
             tabBar(group)
-            if let active = group.active {
-                ReaderBreadcrumbs(location: active.location) { location in
+            if let tab = group.active {
+                ReaderBreadcrumbs(tab: tab, focusPane: { model.focus(pane) }) { location in
                     model.focus(pane)
                     model.open(location)
                 }
-                .id(active.id)
+                .id(tab.id)
                 WorkspaceRule()
-            }
-            if let tab = group.active {
                 TabDocument(tab: tab, appearance: model.appearance, setMediaActivity: model.setMediaActivity, follow: { model.follow($0, from: tab) })
                     .id(tab.id)
             } else {
@@ -133,33 +124,20 @@ struct ReaderPane: View {
                 }
             }
             .accessibilityLabel("\(pane.label) Tabs")
-            HStack(spacing: 2) {
-                Button {
-                    model.focus(pane)
-                    model.choose()
-                } label: {
-                    Image(systemName: "plus").frame(width: 25, height: 25)
+            if !model.split || pane == .right {
+                Button(action: model.toggleSplit) {
+                    Image(systemName: model.split ? "rectangle" : "rectangle.split.2x1")
+                        .frame(width: 25, height: 25)
                 }
                 .buttonStyle(WorkspaceButton())
-                .accessibilityLabel("Open File in \(pane.label) Pane")
-                .help("Open File")
-                if !model.split || pane == .right {
-                    Button(action: model.toggleSplit) {
-                        Image(systemName: model.split ? "rectangle" : "rectangle.split.2x1")
-                            .frame(width: 25, height: 25)
-                    }
-                    .buttonStyle(WorkspaceButton())
-                    .accessibilityLabel(model.split ? "Merge Panes" : "Split Right")
-                    .help(model.split ? "Merge Panes" : "Split Right")
-                }
+                .accessibilityLabel(model.split ? "Merge Panes" : "Split Right")
+                .help(model.split ? "Merge Panes" : "Split Right")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
             }
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 4)
         }
-        .frame(height: 31)
-        .background(WorkspaceStyle.surface)
-        .overlay(alignment: .bottom) { WorkspaceRule() }
+        .workspaceHeader()
     }
 
 }

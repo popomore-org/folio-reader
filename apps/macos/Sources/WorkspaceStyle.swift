@@ -18,6 +18,14 @@ enum WorkspaceStyle {
     }
 }
 
+extension View {
+    func workspaceHeader() -> some View {
+        frame(height: 31)
+            .background(WorkspaceStyle.surface)
+            .overlay(alignment: .bottom) { WorkspaceRule() }
+    }
+}
+
 struct WorkspaceRule: View {
     var vertical = false
 

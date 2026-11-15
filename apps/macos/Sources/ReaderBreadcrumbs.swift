@@ -1,10 +1,12 @@
 import SwiftUI
 
 struct ReaderBreadcrumbs: View {
-    let location: FileLocation
+    @ObservedObject var tab: ReaderTab
+    let focusPane: () -> Void
     let open: (FileLocation) -> Void
 
     @State private var presentedPath: String?
+    private var location: FileLocation { tab.location }
 
     private struct Segment: Identifiable {
         let path: String
@@ -24,33 +26,90 @@ struct ReaderBreadcrumbs: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView(.horizontal) {
-                HStack(spacing: 2) {
-                    Image(systemName: "folder")
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    ForEach(segments) { segment in
-                        if !segment.path.isEmpty {
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 8, weight: .medium))
-                                .foregroundStyle(.tertiary)
-                                .accessibilityHidden(true)
-                        }
-                        button(segment)
-                    }
-                }
-                .padding(.horizontal, 9)
+        HStack(spacing: 6) {
+            breadcrumbs
+            fileActions
                 .fixedSize(horizontal: true, vertical: false)
-                .frame(minWidth: geometry.size.width, minHeight: geometry.size.height, alignment: .leading)
-            }
-            .scrollIndicators(.hidden)
-            .defaultScrollAnchor(.trailing)
-            .accessibilityLabel("File Path")
+                .padding(.trailing, 9)
         }
         .font(.system(size: 11))
         .frame(height: 26)
         .background(WorkspaceStyle.surface)
+    }
+
+    private var breadcrumbs: some View {
+        let path = segments
+        return ViewThatFits(in: .horizontal) {
+            pathRow(path).fixedSize(horizontal: true, vertical: false)
+            HStack(spacing: 2) {
+                ScrollView(.horizontal) {
+                    pathRow(Array(path.dropLast()))
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .scrollIndicators(.hidden)
+                .defaultScrollAnchor(.trailing)
+
+                if let file = path.last {
+                    HStack(spacing: 2) { breadcrumb(file) }
+                        .layoutPriority(1)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, 9)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("File Path")
+    }
+
+    private func pathRow(_ path: [Segment]) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "folder")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            ForEach(path) { segment in breadcrumb(segment) }
+        }
+    }
+
+    @ViewBuilder
+    private func breadcrumb(_ segment: Segment) -> some View {
+        if !segment.path.isEmpty {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        }
+        button(segment)
+    }
+
+    private var fileActions: some View {
+        HStack(spacing: 6) {
+            if tab.editing {
+                Button("Save") {
+                    focusPane()
+                    tab.save()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!tab.dirty)
+                .help("Save Changes (⌘S)")
+            }
+
+            Picker("Document Mode", selection: Binding(get: { tab.editing }, set: { editing in
+                focusPane()
+                tab.setEditing(editing)
+            })) {
+                Label("Reading", systemImage: "doc")
+                    .labelStyle(.iconOnly)
+                    .tag(false)
+                Label("Source", systemImage: "chevron.left.forwardslash.chevron.right")
+                    .labelStyle(.iconOnly)
+                    .tag(true)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .disabled(!tab.canEdit)
+            .help(tab.canEdit ? "Switch Between Reading and Source (⌘E)" : "This file is read-only in Folio")
+        }
+        .controlSize(.small)
     }
 
     private func button(_ segment: Segment) -> some View {

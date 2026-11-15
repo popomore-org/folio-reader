@@ -28,8 +28,8 @@ struct FolderSidebar: View {
                     .buttonStyle(.borderless)
                     .help("Add Folders")
             }
-            .padding(.horizontal, 12).frame(height: 31)
-            WorkspaceRule()
+            .padding(.horizontal, 12)
+            .workspaceHeader()
             if model.folders.isEmpty {
                 Text("Add a folder to browse its files.")
                     .font(.callout).foregroundStyle(.secondary).padding(12)
@@ -314,9 +314,10 @@ struct FileIcon: View {
 struct OpenWithMenu: View {
     let file: URL
     let model: ReaderModel
+    var usesToolbarIcon = false
 
     var body: some View {
-        Menu("Open With") {
+        Menu {
             let workspace = NSWorkspace.shared
             let defaultApplication = workspace.urlForApplication(toOpen: file)
             let candidates = workspace.urlsForApplications(toOpen: file).filter { $0 != Bundle.main.bundleURL }
@@ -326,6 +327,13 @@ struct OpenWithMenu: View {
                 }
             }
             Button("Other Application…") { model.chooseApplication(for: file) }
+        } label: {
+            if usesToolbarIcon {
+                Label("Open As", systemImage: "arrow.up.right.square")
+                    .labelStyle(.iconOnly)
+            } else {
+                Text("Open With")
+            }
         }
     }
 }
