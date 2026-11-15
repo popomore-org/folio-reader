@@ -59,6 +59,8 @@ jobs:
         with:
           node-version-file: .node-version
           package-manager-cache: false
+      - name: Install the pinned Rust toolchain
+        run: rustup show active-toolchain
       - run: scripts/prepare-update-qa
   release:
     if: github.event_name == 'push'
@@ -145,6 +147,9 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ github.run_id }}
           path: dist
+      - if: fromJSON(steps.published.outputs.target).release_id == null && steps.signed.outputs.id == ''
+        name: Install the pinned Rust toolchain
+        run: rustup show active-toolchain
       - if: fromJSON(steps.published.outputs.target).release_id == null && steps.signed.outputs.id == ''
         name: Import Developer ID and build notarized packages
         env:
