@@ -97,6 +97,18 @@ fn file_selection_respects_scope_and_format() -> Result<(), Error> {
     Ok(())
 }
 
+#[test]
+fn svg_files_are_read_only_images() -> Result<(), Error> {
+    let root = tempdir()?;
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>"#;
+    fs::write(root.path().join("diagram.SVG"), svg)?;
+    let document = Workspace::open(root.path())?.read("diagram.SVG")?;
+    assert_eq!(document.kind, FileKind::Image);
+    assert_eq!(document.bytes, svg.len() as u64);
+    assert!(document.source.is_none() && document.revision.is_none() && document.preview.is_none());
+    Ok(())
+}
+
 #[cfg(feature = "git")]
 #[test]
 fn file_history_and_staged_and_unstaged_patches() -> Result<(), Error> {

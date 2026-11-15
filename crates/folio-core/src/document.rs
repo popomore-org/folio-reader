@@ -42,9 +42,8 @@ impl FileKind {
             "html" | "htm" => Self::Html,
             "rtf" => Self::Rtf,
             "pdf" => Self::Pdf,
-            "png" | "jpeg" | "jpg" | "gif" | "webp" | "heic" | "tif" | "tiff" | "bmp" | "avif" => {
-                Self::Image
-            }
+            "png" | "jpeg" | "jpg" | "gif" | "webp" | "heic" | "tif" | "tiff" | "bmp" | "avif"
+            | "svg" => Self::Image,
             "mp3" | "m4a" | "aac" | "wav" | "aiff" | "caf" | "flac" => Self::Audio,
             "mp4" | "m4v" | "mov" => Self::Video,
             "csv" | "tsv" => Self::Table,

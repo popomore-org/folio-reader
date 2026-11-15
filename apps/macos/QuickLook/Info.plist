@@ -55,6 +55,7 @@
                 <string>public.tiff</string>
                 <string>com.microsoft.bmp</string>
                 <string>public.avif</string>
+                <string>public.svg-image</string>
                 <!-- Audio and video -->
                 <string>public.mp3</string>
                 <string>com.apple.m4a-audio</string>

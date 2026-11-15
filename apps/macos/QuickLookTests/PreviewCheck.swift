@@ -25,7 +25,7 @@ struct PreviewCheck {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let native = "rtf pdf png jpeg jpg gif webp heic tif tiff bmp avif mp3 m4a aac wav aiff caf flac mp4 m4v mov"
+        let native = "rtf pdf png jpeg jpg gif webp heic tif tiff bmp avif svg mp3 m4a aac wav aiff caf flac mp4 m4v mov"
         let text = "md markdown mdown mkd html htm csv tsv mmd mermaid vl txt text log json jsonl yaml yml xml toml ini conf rs swift c h cpp hpp py js ts jsx tsx go java kt sh zsh sql css scss diff patch"
         let media = Set(native.split(separator: " ").map(String.init))
         let suffixes = (native + " " + text).split(separator: " ").map(String.init)
