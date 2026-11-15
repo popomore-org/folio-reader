@@ -157,7 +157,9 @@ struct FolderSidebar: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 16)
                     .accessibilityHidden(true)
-                Text(item.title).fontWeight(item.path.isEmpty ? .semibold : .regular)
+                Text(item.title)
+                    .font(.system(size: WorkspaceStyle.navigationTextSize,
+                                  weight: item.path.isEmpty ? .semibold : .regular))
             }
         }
         .buttonStyle(WorkspaceButton())
@@ -189,6 +191,7 @@ struct FolderSidebar: View {
             row(depth: item.depth, disclosure: nil) {
                 FileIcon(name: item.title, kind: item.kind)
                 Text(item.title)
+                    .font(.system(size: WorkspaceStyle.navigationTextSize))
             }
         }
         .buttonStyle(WorkspaceButton(selected: selected))
@@ -314,7 +317,7 @@ struct FileIcon: View {
 struct OpenWithMenu: View {
     let file: URL
     let model: ReaderModel
-    var usesToolbarIcon = false
+    var showsIcon = false
 
     var body: some View {
         Menu {
@@ -322,18 +325,37 @@ struct OpenWithMenu: View {
             let defaultApplication = workspace.urlForApplication(toOpen: file)
             let candidates = workspace.urlsForApplications(toOpen: file).filter { $0 != Bundle.main.bundleURL }
             ForEach(candidates, id: \.self) { application in
-                Button(application.deletingPathExtension().lastPathComponent + (application == defaultApplication ? " (Default)" : "")) {
+                let name = application.deletingPathExtension().lastPathComponent
+                let title = application == defaultApplication ? name + " (Default)" : name
+                Button {
                     model.openExternally(file, application: application)
+                } label: {
+                    Label {
+                        Text(title)
+                    } icon: {
+                        Image(nsImage: menuIcon(for: application))
+                    }
+                    .labelStyle(.titleAndIcon)
                 }
             }
             Button("Other Application…") { model.chooseApplication(for: file) }
         } label: {
-            if usesToolbarIcon {
-                Label("Open As", systemImage: "arrow.up.right.square")
-                    .labelStyle(.iconOnly)
+            if showsIcon {
+                Label {
+                    Text("Open As")
+                } icon: {
+                    WorkspaceIcon.openAs
+                }
+                .labelStyle(.iconOnly)
             } else {
                 Text("Open With")
             }
         }
+    }
+
+    private func menuIcon(for application: URL) -> NSImage {
+        let icon = NSWorkspace.shared.icon(forFile: application.path).copy() as! NSImage
+        icon.size = NSSize(width: 16, height: 16)
+        return icon
     }
 }

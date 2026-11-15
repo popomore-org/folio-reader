@@ -15,10 +15,9 @@ struct Folio: App {
     private var workspaceFocused: Bool { quickPreviewActive != true }
 
     var body: some Scene {
-        WindowGroup("Folio", id: "workspace") {
+        Window("Folio", id: "workspace") {
             WorkspaceSceneContent(delegate: delegate, model: model, updates: updates)
         }
-        .handlesExternalEvents(matching: [])
         .defaultSize(width: 1130, height: 760)
         .commands {
             CommandGroup(after: .appInfo) {
@@ -43,7 +42,7 @@ struct Folio: App {
                 Button("Find in Document") { model.active?.finding = true }
                     .keyboardShortcut("f").disabled(!workspaceFocused || model.active?.canFind != true || model.showingGit)
                 Button(model.active?.editing == true ? "Return to Reading" : "Edit Source") {
-                    if let active = model.active { active.setEditing(!active.editing) }
+                    if let active = model.active { active.setMode(active.editing ? .reading : .source) }
                 }
                 .keyboardShortcut("e")
                 .disabled(!workspaceFocused || model.active?.canEdit != true || model.showingGit)
@@ -103,15 +102,9 @@ final class FolioDelegate: NSObject, NSApplicationDelegate {
     }
 
     func registerWorkspace(model: ReaderModel, openWindow: OpenWindowAction) {
-        showWorkspace = { [weak self, weak model] urls in
-            if let window = NSApp.windows.first(where: { $0.identifier == WindowOwner.identifier && ($0.isVisible || $0.isMiniaturized) }) {
-                model?.openURLs(urls)
-                if window.isMiniaturized { window.deminiaturize(nil) }
-                window.makeKeyAndOrderFront(nil)
-            } else {
-                self?.pending.append(contentsOf: urls)
-                openWindow(id: "workspace")
-            }
+        showWorkspace = { [weak model] urls in
+            model?.openURLs(urls)
+            openWindow(id: "workspace")
         }
     }
 
@@ -170,7 +163,6 @@ private struct PreviewSceneContent: View {
 }
 
 struct WindowOwner: NSViewRepresentable {
-    static let identifier = NSUserInterfaceItemIdentifier("folio.workspace")
     let model: ReaderModel
     let updates: FolioUpdates
 
@@ -212,7 +204,6 @@ struct WindowOwner: NSViewRepresentable {
             guard window.delegate !== self else { return }
             previous = window.delegate
             window.delegate = self
-            window.identifier = WindowOwner.identifier
             window.backgroundColor = NSColor(WorkspaceStyle.surface)
             if InstanceMode.isSeparate { window.isRestorable = false }
             window.tabbingMode = .disallowed

@@ -174,7 +174,7 @@ struct ReaderWeb: NSViewRepresentable {
                 return (try Data(contentsOf: resource), url.pathExtension == "css" ? "text/css" : "text/javascript")
             case ("files", _):
                 let relative = String(url.path.dropFirst())
-                let extensions = ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp"]
+                let extensions = ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "svg"]
                 guard let resource = Core.file(relative, in: root),
                       extensions.contains(resource.pathExtension.lowercased()),
                       let type = UTType(filenameExtension: resource.pathExtension)?.preferredMIMEType

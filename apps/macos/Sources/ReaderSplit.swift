@@ -3,13 +3,13 @@ import SwiftUI
 
 struct ReaderSplit<Left: View, Right: View>: View {
     let isSplit: Bool
+    var minimumPaneWidth: CGFloat = 265
     @ViewBuilder let left: Left
     @ViewBuilder let right: Right
 
     @State private var fraction: CGFloat = 0.5
     @GestureState private var dragOffset: CGFloat = 0
 
-    private let minimumPaneWidth: CGFloat = 265
     private let dividerWidth: CGFloat = 8
 
     var body: some View {

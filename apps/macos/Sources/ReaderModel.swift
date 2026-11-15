@@ -10,6 +10,10 @@ enum Pane: String, CaseIterable {
     var label: String { rawValue.capitalized }
 }
 
+enum ReaderMode: Hashable {
+    case reading, source, split
+}
+
 struct FileLocation: Hashable, Sendable {
     let root: URL
     let path: String
@@ -25,8 +29,11 @@ final class ReaderTab: ObservableObject, Identifiable {
     let location: FileLocation
     @Published private(set) var document: Document?
     @Published private(set) var loading = false
-    @Published private(set) var editing = false
-    @Published var draft = ""
+    @Published private(set) var mode: ReaderMode = .reading
+    @Published var draft = "" {
+        didSet { if mode == .split { renderDraft() } }
+    }
+    @Published private var draftPreview: Result<Document.Preview, Error>?
     @Published var loadError: String?
     @Published var error: String?
     @Published var finding = false
@@ -36,19 +43,30 @@ final class ReaderTab: ObservableObject, Identifiable {
     var pendingFragment: String?
     var scrollOffset = 0.0
     private var readTask: Task<Void, Never>?
+    private var draftTask: Task<Void, Never>?
     private var previewNeedsReload = false
 
     init(location: FileLocation) { self.location = location }
 
+    var editing: Bool { mode != .reading }
     var dirty: Bool { editing && document?.source != draft }
     var title: String { location.name }
-    var canFind: Bool { document?.preview != nil && !editing }
+    var canFind: Bool { mode != .source && preview != nil && previewError == nil }
     var canEdit: Bool { document?.revision != nil && document?.source != nil }
+    var preview: Document.Preview? {
+        if case .success(let preview) = draftPreview { return preview }
+        return document?.preview
+    }
+    var previewError: String? {
+        if case .failure(let error) = draftPreview { return error.localizedDescription }
+        return nil
+    }
 
     func load() {
         readTask?.cancel()
         let location = location
-        editing = false
+        mode = .reading
+        clearDraftPreview()
         draft = ""
         document = nil
         previewNeedsReload = false
@@ -70,16 +88,46 @@ final class ReaderTab: ObservableObject, Identifiable {
         }
     }
 
-    func setEditing(_ enabled: Bool) {
-        guard enabled != editing else { return }
-        if !enabled {
+    func setMode(_ mode: ReaderMode) {
+        guard mode != self.mode else { return }
+        if mode == .reading {
             _ = leaveDraft()
             return
         }
         guard canEdit, let source = document?.source else { return }
-        finding = false
-        draft = source
-        editing = true
+        if !editing { draft = source }
+        self.mode = mode
+        if mode == .split {
+            renderDraft()
+        } else {
+            finding = false
+            clearDraftPreview()
+        }
+    }
+
+    private func renderDraft() {
+        draftTask?.cancel()
+        let source = draft
+        let name = title
+        draftTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(160)) } catch { return }
+            let result = await Task.detached(priority: .userInitiated) {
+                Result {
+                    guard let preview = try Core.textPreview(for: name, source: source) else {
+                        throw CoreError(message: "This draft could not be rendered.")
+                    }
+                    return preview
+                }
+            }.value
+            guard !Task.isCancelled else { return }
+            self?.draftPreview = result
+        }
+    }
+
+    private func clearDraftPreview() {
+        draftTask?.cancel()
+        draftTask = nil
+        draftPreview = nil
     }
 
     @discardableResult
@@ -122,7 +170,8 @@ final class ReaderTab: ObservableObject, Identifiable {
         if reload || previewNeedsReload {
             load()
         } else {
-            editing = false
+            mode = .reading
+            clearDraftPreview()
         }
         return true
     }
@@ -134,6 +183,11 @@ final class ReaderModel: ObservableObject {
         var tabs: [ReaderTab] = []
         var selected: UUID?
         var active: ReaderTab? { tabs.first { $0.id == selected } }
+
+        mutating func insert(_ tab: ReaderTab, before anchor: UUID?) {
+            let index = tabs.firstIndex { $0.id == anchor } ?? tabs.endIndex
+            tabs.insert(tab, at: index)
+        }
 
         mutating func remove(_ tab: ReaderTab) {
             guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
@@ -269,14 +323,34 @@ final class ReaderModel: ObservableObject {
         tab.load()
     }
 
-    func move(_ tab: ReaderTab, from source: Pane, to target: Pane) {
-        guard source != target, var origin = groups[source],
-              origin.tabs.contains(where: { $0.id == tab.id }) else { return }
+    func dropTab(_ id: UUID, in target: Pane, before anchor: UUID?, createRightPane: Bool = false) {
+        guard groups[target] != nil || (createRightPane && target == .right) else { return }
+        for (source, group) in groups {
+            if let tab = group.tabs.first(where: { $0.id == id }) {
+                move(tab, from: source, to: target, before: anchor)
+                return
+            }
+        }
+    }
+
+    func move(_ tab: ReaderTab, from source: Pane, to target: Pane, before anchor: UUID? = nil) {
+        guard anchor != tab.id, var origin = groups[source],
+              let index = origin.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        if source == target {
+            origin.tabs.remove(at: index)
+            origin.insert(tab, before: anchor)
+            groups[source] = origin
+            return
+        }
+
         origin.remove(tab)
         var destination = groups[target] ?? Group()
-        destination.tabs.append(tab)
-        groups[source] = origin
-        groups[target] = destination
+        destination.insert(tab, before: anchor)
+        destination.selected = tab.id
+        var updated = groups
+        updated[source] = origin
+        updated[target] = destination
+        groups = updated
         activate(tab, in: target)
     }
 

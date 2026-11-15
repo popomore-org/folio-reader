@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ReaderBreadcrumbs: View {
     @ObservedObject var tab: ReaderTab
+    let model: ReaderModel
     let focusPane: () -> Void
     let open: (FileLocation) -> Void
 
@@ -83,51 +84,52 @@ struct ReaderBreadcrumbs: View {
 
     private var fileActions: some View {
         HStack(spacing: 6) {
-            if tab.editing {
-                Button("Save") {
-                    focusPane()
-                    tab.save()
-                }
-                .buttonStyle(.bordered)
-                .disabled(!tab.dirty)
-                .help("Save Changes (⌘S)")
-            }
-
-            Picker("Document Mode", selection: Binding(get: { tab.editing }, set: { editing in
+            Picker("Document Mode", selection: Binding(get: { tab.mode }, set: { mode in
                 focusPane()
-                tab.setEditing(editing)
+                tab.setMode(mode)
             })) {
                 Label("Reading", systemImage: "doc")
                     .labelStyle(.iconOnly)
-                    .tag(false)
+                    .tag(ReaderMode.reading)
                 Label("Source", systemImage: "chevron.left.forwardslash.chevron.right")
                     .labelStyle(.iconOnly)
-                    .tag(true)
+                    .tag(ReaderMode.source)
+                Label("Source and Preview", systemImage: "rectangle.split.2x1")
+                    .labelStyle(.iconOnly)
+                    .tag(ReaderMode.split)
             }
             .labelsHidden()
             .pickerStyle(.segmented)
             .disabled(!tab.canEdit)
-            .help(tab.canEdit ? "Switch Between Reading and Source (⌘E)" : "This file is read-only in Folio")
+            .help(tab.canEdit ? "Reading, Source, or Source and Preview" : "This file is read-only in Folio")
+
+            if let file = location.url {
+                OpenWithMenu(file: file, model: model, showsIcon: true)
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.visible)
+                    .help("Open With Another Application")
+            }
         }
         .controlSize(.small)
     }
 
     private func button(_ segment: Segment) -> some View {
         let currentFile = segment.path == location.path
+        let isPresented = presentedPath == segment.path
         let folder = currentFile ? segment.path.split(separator: "/").dropLast().joined(separator: "/") : segment.path
         return Button {
             presentedPath = presentedPath == segment.path ? nil : segment.path
         } label: {
             Text(segment.name)
-                .fontWeight(currentFile ? .medium : .regular)
-                .foregroundStyle(currentFile ? .primary : .secondary)
+                .font(.system(size: WorkspaceStyle.detailTextSize, weight: currentFile ? .medium : .regular))
+                .foregroundStyle(currentFile || isPresented ? Color.primary : WorkspaceStyle.secondaryText)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .padding(.horizontal, 5)
                 .frame(maxWidth: 160, minHeight: 21)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(WorkspaceButton(selected: presentedPath == segment.path))
+        .buttonStyle(WorkspaceButton(selected: isPresented))
         .accessibilityHint(currentFile ? "Browse files in this folder" : "Browse this folder")
         .help(segment.path.isEmpty ? location.root.path : segment.path)
         .popover(isPresented: Binding(
