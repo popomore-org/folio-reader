@@ -30,7 +30,7 @@ enum FileKind: String, Decodable {
     }
 }
 
-struct Entry: Decodable, Identifiable {
+struct Entry: Decodable, Identifiable, Sendable {
     let name: String
     let path: String
     let directory: Bool

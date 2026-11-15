@@ -83,13 +83,11 @@ struct ReaderPane: View {
         VStack(spacing: 0) {
             tabBar(group)
             if let active = group.active {
-                Label(active.location.displayPath, systemImage: "folder")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1).truncationMode(.middle)
-                    .padding(.horizontal, 10)
-                    .frame(maxWidth: .infinity, minHeight: 25, alignment: .leading)
-                    .background(WorkspaceStyle.surface)
+                ReaderBreadcrumbs(location: active.location) { location in
+                    model.focus(pane)
+                    model.open(location)
+                }
+                .id(active.id)
                 WorkspaceRule()
             }
             if let tab = group.active {
