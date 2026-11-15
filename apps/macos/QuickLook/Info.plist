@@ -2,9 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDisplayName</key><string>Folio Markdown Preview</string>
+    <key>CFBundleDisplayName</key><string>Folio</string>
     <key>CFBundleExecutable</key><string>FolioQuickLook</string>
-    <key>CFBundleName</key><string>Folio Markdown Preview</string>
+    <key>CFBundleName</key><string>Folio</string>
     <key>CFBundlePackageType</key><string>XPC!</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSExtension</key>
@@ -16,7 +16,63 @@
             <key>QLIsDataBasedPreview</key><true/>
             <key>QLSupportedContentTypes</key>
             <array>
+                <!-- Text, source code and web documents -->
                 <string>net.daringfireball.markdown</string>
+                <string>public.plain-text</string>
+                <string>com.apple.log</string>
+                <string>public.json</string>
+                <string>org.popomore.folio.json-lines</string>
+                <string>public.yaml</string>
+                <string>public.xml</string>
+                <string>public.toml</string>
+                <string>com.microsoft.ini</string>
+                <string>org.popomore.folio.configuration</string>
+                <string>com.nssurge.conf</string>
+                <string>org.popomore.folio.source-code</string>
+                <string>public.swift-source</string>
+                <string>public.c-source</string>
+                <string>public.c-header</string>
+                <string>public.c-plus-plus-source</string>
+                <string>public.c-plus-plus-header</string>
+                <string>public.python-script</string>
+                <string>com.netscape.javascript-source</string>
+                <string>com.microsoft.typescript</string>
+                <string>com.sun.java-source</string>
+                <string>public.shell-script</string>
+                <string>public.zsh-script</string>
+                <string>org.iso.sql</string>
+                <string>public.css</string>
+                <string>public.patch-file</string>
+                <string>public.html</string>
+                <string>public.rtf</string>
+                <string>com.adobe.pdf</string>
+                <!-- Images -->
+                <string>public.png</string>
+                <string>public.jpeg</string>
+                <string>com.compuserve.gif</string>
+                <string>org.webmproject.webp</string>
+                <string>public.heic</string>
+                <string>public.tiff</string>
+                <string>com.microsoft.bmp</string>
+                <string>public.avif</string>
+                <!-- Audio and video -->
+                <string>public.mp3</string>
+                <string>com.apple.m4a-audio</string>
+                <string>public.aac-audio</string>
+                <string>com.microsoft.waveform-audio</string>
+                <string>public.aiff-audio</string>
+                <string>com.apple.coreaudio-format</string>
+                <string>org.xiph.flac</string>
+                <string>public.mpeg-4</string>
+                <string>public.mpeg-4-audio</string>
+                <string>com.apple.m4v-video</string>
+                <string>com.apple.quicktime-movie</string>
+                <string>public.mpeg-2-transport-stream</string>
+                <!-- Tables and diagrams -->
+                <string>public.comma-separated-values-text</string>
+                <string>public.tab-separated-values-text</string>
+                <string>org.popomore.folio.mermaid</string>
+                <string>org.popomore.folio.vega-lite</string>
             </array>
         </dict>
     </dict>

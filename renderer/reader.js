@@ -67,7 +67,8 @@ async function diagrams(current) {
 function redraw() {
   const current = ++generation;
   draw = draw.then(() => diagrams(current));
+  return draw;
 }
 
 window.addEventListener("folio-color-scheme", redraw);
-redraw();
+window.folioChartsReady = redraw();

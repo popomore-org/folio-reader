@@ -6,7 +6,8 @@ mod history;
 mod workspace;
 
 pub use document::{
-    Document, FileKind, Heading, Preview, Revision, render_markdown, sanitize_html,
+    Document, FileKind, Heading, Preview, Revision, render_markdown, render_text_preview,
+    sanitize_html,
 };
 #[cfg(feature = "git")]
 pub use history::{Commit, GitChange, GitChanges, GitFile, Patch};

@@ -2,10 +2,10 @@
 
 ## Current
 
-- Status: 原生目标为 active。应用、独立 Cargo 消费、隔离包更新和 Finder 文件关联已验证。新加的 Markdown 快速查看扩展已构建、签名与注册，原生渲染验证通过。
-- Blockers: Finder 按空格与「打开方式」实点待电脑操作恢复。Meta #54 等待合并授权，正式更新待批准分发仓库、配置 Apple 签名和公证凭据及稳定更新密钥。
-- Next: 更新 Folio #1 与 Meta 候选的提交，复核 CI 和合并检查。之后完成 Finder 验收，并在正式渠道就绪时测试公证包及 HTTPS 更新。
-- Branch/PR: feat/macos-reader / Folio #1，Meta #54
+- Status: 原生目标为 blocked。SwiftUI 预览恢复此前界面细节，与扩展文件类型的 Quick Look 一起构建。用户截图对应文件已在新版打开。
+- Blockers: Finder 实按空格验收在用户停止电脑操作后暂停。正式签名、公证和 HTTPS 更新另待验收。首次 CI 接入仍绑定 Folio #1 的固定提交。
+- Next: 保留本地 SwiftUI 修正版的可构建来源。Finder 验收在用户恢复电脑操作后继续。
+- Branch/PR: feat/quicklook-file-types 基于 Folio #1 的固定提交。Meta #54 已合并。
 
 ## Plan
 
@@ -197,3 +197,13 @@
 - 随 macOS 应用打包只读数据型 Quick Look 扩展，导入常见 Markdown 类型。扩展直接读取系统提供的单个文件，复用正文 CSS 与 Rust 渲染，HTML 禁止脚本与外部资源。
 - Apple Silicon 预览包完成深度签名校验。PlugInKit 返回已注册扩展，Mach-O 最低系统为 macOS 14。原生 Swift 样例直接验证中文、UTF-8 BOM、GFM 表格、任务清单、Markdown 代码块、安全策略、无效编码与超限文件。
 - macOS 27.0.1 的 `qlmanage -p -o` 能生成 PDF 预览。测试 Markdown 时系统启动了 Folio 扩展进程，但命令行宿主在 ExtensionFoundation 建立连接时抛出字典键为空的异常。两种调用模式均复现。电脑控制仍停止，Finder 实按空格尚未验收。
+
+### Step 29 — 2026-11-15 — 扩展 Quick Look 文件类型与应用命名
+
+- 扩展显示名随宿主应用构建身份生成。校验 65 种后缀的类型注册与分流，补验两种复合 Vega-Lite 后缀和 Mermaid、Vega-Lite 生成 PDF。
+- 用户停止了 Finder 电脑操作。另用样例确认 Finder「通过 Xcode 打开」所用的默认应用为 Xcode。
+
+### Step 30 — 2026-11-15 — 校正新版 SwiftUI 工作区的构建基线
+
+- 早先从固定首次接入提交构建 Quick Look 版时漏掉后续界面调整。把文件路径行右端的预览／源码切换、预览单页图标、Open As、统一栏高、移除标签栏加号、双击标题栏缩放和保存留在源码模式恢复到 SwiftUI 源码中。
+- 隔离样例实测正常文档、只读 HTML、左右分栏、Open As 和源码保存。新版签名通过，Quick Look 后缀及图表检查再次通过。按截图中的文件打开正式本地预览，新进程 PID 26673 为前台应用。
