@@ -3,6 +3,7 @@ import SwiftUI
 
 struct FolderSidebar: View {
     @ObservedObject var model: ReaderModel
+    @Environment(\.colorScheme) private var colorScheme
     @State private var keyboardFocus = false
     @State private var cursor: FileLocation?
 
@@ -18,69 +19,79 @@ struct FolderSidebar: View {
         var id: FileLocation { FileLocation(root: folder.url, path: path) }
     }
 
+    private struct TreeState: Encodable, Equatable {
+        struct Item: Encodable, Equatable {
+            let id: String
+            let title: String
+            let icon: String
+            let tip: String
+            let depth: Int
+            let selected: Bool
+            let expanded: Bool?
+            let message: Bool
+        }
+
+        let dark: Bool
+        let title = "Folders"
+        let details = "Add a folder to browse its files."
+        let cursor: String?
+        let keyboardFocus: Bool
+        let rows: [Item]
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Folders").font(.callout.weight(.semibold))
-                Spacer()
-                Button("Add Folders", systemImage: "plus") { model.choose(foldersOnly: true) }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderless)
-                    .help("Add Folders")
+        let visibleRows = rows
+        let state = TreeState(dark: colorScheme == .dark, cursor: cursor.map(rowID), keyboardFocus: keyboardFocus, rows: visibleRows.map { row in
+            let open = row.directory ? row.folder.expanded.contains(row.path) : nil
+            return TreeState.Item(
+                id: rowID(row.id),
+                title: row.title,
+                icon: open.map { $0 ? "folder.fill" : "folder" } ?? FileIcon(name: row.title, kind: row.kind).symbol,
+                tip: row.path.isEmpty ? row.folder.url.path : row.path,
+                depth: min(10, row.depth),
+                selected: !row.directory && !row.message && model.active?.location == row.id,
+                expanded: open,
+                message: row.message
+            )
+        })
+        NativeShellSurface(region: .folders, state: state) { action, view in
+            if action.name == "add_folders" {
+                model.choose(foldersOnly: true)
+                return
             }
-            .padding(.horizontal, 12).frame(height: 31)
-            WorkspaceRule()
-            if model.folders.isEmpty {
-                Text("Add a folder to browse its files.")
-                    .font(.callout).foregroundStyle(.secondary).padding(12)
-                Spacer()
-            } else {
-                let visibleRows = rows
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 1) {
-                            ForEach(visibleRows) { item in
-                                rowView(item).id(item.id)
-                            }
-                        }
-                        .padding(.vertical, 5)
-                        .padding(.horizontal, 6)
-                    }
-                    .background {
-                        FolderKeyTarget(request: model.folderTreeFocus, focused: $keyboardFocus) {
-                            handleKey($0, rows: visibleRows)
-                        }
-                        .frame(width: 0, height: 0)
-                    }
-                    .onChange(of: model.active?.location, initial: true) { _, location in
-                        if let location { cursor = location; proxy.scrollTo(location) }
-                    }
-                    .onChange(of: model.folderTreeFocus, initial: true) { _, request in
-                        guard request != nil else { return }
-                        cursor = visibleRows.first { $0.id == model.active?.location }?.id ?? visibleRows.first?.id
-                    }
-                    .onChange(of: cursor) { _, row in
-                        if let row, keyboardFocus { proxy.scrollTo(row) }
-                    }
-                    .accessibilityLabel("Folder Tree")
+            guard let id = action.id, let row = visibleRows.first(where: { rowID($0.id) == id }), !row.message else { return }
+            switch action.name {
+            case "open_row":
+                cursor = row.id
+                if row.directory {
+                    toggle(row)
+                } else {
+                    model.open(row.id, in: action.alternate ? model.focusedPane.other : model.focusedPane)
                 }
+            case "folder_menu":
+                action.showMenu(menuItems(row), in: view)
+            default: break
             }
         }
         .background(WorkspaceStyle.surface)
+        .background {
+            FolderKeyTarget(request: model.folderTreeFocus, focused: $keyboardFocus) {
+                handleKey($0, rows: visibleRows)
+            }
+            .frame(width: 0, height: 0)
+        }
+        .onChange(of: model.active?.location, initial: true) { _, location in
+            if let location { cursor = location }
+        }
+        .onChange(of: model.folderTreeFocus, initial: true) { _, request in
+            guard request != nil else { return }
+            cursor = visibleRows.first { $0.id == model.active?.location }?.id ?? visibleRows.first?.id
+        }
+        .accessibilityLabel("Folder Tree")
     }
 
-    @ViewBuilder
-    private func rowView(_ item: Row) -> some View {
-        if item.message {
-            Text(item.title)
-                .font(.caption).foregroundStyle(.secondary)
-                .padding(.leading, 21 + CGFloat(min(item.depth, 10) * 12))
-                .padding(.vertical, 3)
-        } else if item.directory {
-            directory(item)
-        } else {
-            file(item)
-        }
+    private func rowID(_ location: FileLocation) -> String {
+        location.root.path + "\0" + location.path
     }
 
     private func handleKey(_ key: KeyEquivalent, rows: [Row]) -> Bool {
@@ -120,12 +131,6 @@ struct FolderSidebar: View {
         model.toggleFolder(root: item.folder.url, path: item.path)
     }
 
-    private func cursorBorder(_ item: Row) -> some View {
-        RoundedRectangle(cornerRadius: 4)
-            .strokeBorder(keyboardFocus && cursor == item.id ? WorkspaceStyle.focus : .clear)
-            .allowsHitTesting(false)
-    }
-
     private var rows: [Row] {
         var result: [Row] = []
         func append(_ folder: ReaderModel.Folder, path: String, title: String, depth: Int) {
@@ -147,82 +152,27 @@ struct FolderSidebar: View {
         return result
     }
 
-    private func directory(_ item: Row) -> some View {
-        let expanded = item.folder.expanded.contains(item.path)
-        return Button {
-            toggle(item)
-        } label: {
-            row(depth: item.depth, disclosure: expanded) {
-                Image(systemName: expanded ? "folder.fill" : "folder")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16)
-                    .accessibilityHidden(true)
-                Text(item.title).fontWeight(item.path.isEmpty ? .semibold : .regular)
-            }
+    private func menuItems(_ row: Row) -> [NSMenuItem] {
+        if row.directory {
+            guard row.path.isEmpty else { return [] }
+            let root = row.folder.url
+            return [
+                NativeShellMenuItem("Reload Folder") { model.refreshFolder(root) },
+                NativeShellMenuItem("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([root]) },
+                .separator(),
+                NativeShellMenuItem("Remove Folder") { model.removeFolder(root) },
+            ]
         }
-        .buttonStyle(WorkspaceButton())
-        .overlay { cursorBorder(item) }
-        .accessibilityLabel(item.title)
-        .accessibilityValue(expanded ? "Expanded" : "Collapsed")
-        .help(item.path.isEmpty ? item.folder.url.path : item.path)
-        .contextMenu {
-            if item.path.isEmpty {
-                Button("Reload Folder") { model.refreshFolder(item.folder.url) }
-                Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.folder.url]) }
-                Divider()
-                Button("Remove Folder", role: .destructive) { model.removeFolder(item.folder.url) }
-            }
+        var items: [NSMenuItem] = [
+            NativeShellMenuItem("Open in \(model.focusedPane.other.label) Pane") { model.open(row.id, in: model.focusedPane.other) },
+        ]
+        if let url = row.id.url {
+            items += [
+                OpenWithMenu(file: url, model: model).menuItem(),
+                NativeShellMenuItem("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) },
+            ]
         }
-    }
-
-    private func file(_ item: Row) -> some View {
-        let location = item.id
-        let selected = model.active?.location == location
-        return Button {
-            cursor = item.id
-            if NSEvent.modifierFlags.contains(.option) {
-                model.open(location, in: model.focusedPane.other)
-            } else {
-                model.open(location)
-            }
-        } label: {
-            row(depth: item.depth, disclosure: nil) {
-                FileIcon(name: item.title, kind: item.kind)
-                Text(item.title)
-            }
-        }
-        .buttonStyle(WorkspaceButton(selected: selected))
-        .overlay { cursorBorder(item) }
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .help(item.path)
-        .contextMenu {
-            Button("Open in \(model.focusedPane.other.label) Pane") { model.open(location, in: model.focusedPane.other) }
-            if let url = location.url {
-                OpenWithMenu(file: url, model: model)
-                Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-            }
-        }
-    }
-
-    private func row<Content: View>(depth: Int, disclosure: Bool?, @ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 6) {
-            if let disclosure {
-                Image(systemName: disclosure ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
-                    .frame(width: 9)
-                    .accessibilityHidden(true)
-            } else {
-                Color.clear.frame(width: 9, height: 1)
-            }
-            content()
-            Spacer(minLength: 0)
-        }
-        .font(.system(size: 12))
-        .lineLimit(1).truncationMode(.middle)
-        .padding(.leading, 5 + CGFloat(min(depth, 10) * 12))
-        .padding(.trailing, 4)
-        .frame(minHeight: 23)
-        .contentShape(Rectangle())
+        return items
     }
 }
 
@@ -293,7 +243,7 @@ struct FileIcon: View {
             .accessibilityHidden(true)
     }
 
-    private var symbol: String {
+    var symbol: String {
         let lower = name.lowercased()
         let ext = (lower as NSString).pathExtension
         if ["cargo.toml", "package.json", "makefile", "dockerfile"].contains(lower) {
@@ -314,18 +264,43 @@ struct FileIcon: View {
 struct OpenWithMenu: View {
     let file: URL
     let model: ReaderModel
+    var usesToolbarIcon = false
 
     var body: some View {
-        Menu("Open With") {
-            let workspace = NSWorkspace.shared
-            let defaultApplication = workspace.urlForApplication(toOpen: file)
-            let candidates = workspace.urlsForApplications(toOpen: file).filter { $0 != Bundle.main.bundleURL }
-            ForEach(candidates, id: \.self) { application in
-                Button(application.deletingPathExtension().lastPathComponent + (application == defaultApplication ? " (Default)" : "")) {
-                    model.openExternally(file, application: application)
-                }
+        Menu {
+            ForEach(candidates, id: \.url) { application in
+                Button(application.name) { model.openExternally(file, application: application.url) }
             }
             Button("Other Application…") { model.chooseApplication(for: file) }
+        } label: {
+            if usesToolbarIcon {
+                Label("Open As", systemImage: "arrow.up.right.square")
+                    .labelStyle(.iconOnly)
+            } else {
+                Text("Open With")
+            }
+        }
+    }
+
+    func menuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Open With", action: nil, keyEquivalent: "")
+        let menu = NSMenu()
+        for application in candidates {
+            menu.addItem(NativeShellMenuItem(application.name) {
+                model.openExternally(file, application: application.url)
+            })
+        }
+        menu.addItem(NativeShellMenuItem("Other Application…") { model.chooseApplication(for: file) })
+        item.submenu = menu
+        return item
+    }
+
+    private var candidates: [(url: URL, name: String)] {
+        let workspace = NSWorkspace.shared
+        let defaultApplication = workspace.urlForApplication(toOpen: file)
+        return workspace.urlsForApplications(toOpen: file).filter { $0 != Bundle.main.bundleURL }.map { application in
+            let name = application.deletingPathExtension().lastPathComponent
+            return (application, name + (application == defaultApplication ? " (Default)" : ""))
         }
     }
 }

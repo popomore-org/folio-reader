@@ -26,6 +26,7 @@ struct GitView: View {
 
     let location: FileLocation
     let refreshID: UUID
+    @Environment(\.colorScheme) private var colorScheme
     @State private var page: Page = .changes
     @State private var snapshot: GitChanges?
     @State private var history: History?
@@ -54,33 +55,7 @@ struct GitView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 1) {
-                ForEach(Page.allCases, id: \.self) { item in
-                    let title = item == .changes && snapshot != nil ? "Changes (\(snapshot?.total ?? 0))" : item.rawValue
-                    Button { page = item } label: {
-                        Text(title)
-                            .font(.system(size: 12, weight: page == item ? .semibold : .regular))
-                            .padding(.horizontal, 9)
-                            .frame(height: 25)
-                    }
-                    .buttonStyle(WorkspaceButton(selected: page == item))
-                    .accessibilityAddTraits(page == item ? .isSelected : [])
-                }
-                Spacer(minLength: 8)
-                if let branch = snapshot?.branch {
-                    Label(branch, systemImage: "arrow.triangle.branch")
-                        .lineLimit(1).truncationMode(.middle)
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                Button { reload = UUID() } label: {
-                    Image(systemName: "arrow.clockwise").frame(width: 25, height: 25)
-                }
-                .buttonStyle(WorkspaceButton())
-                .accessibilityLabel("Refresh Git")
-                .help("Refresh Git")
-            }
-            .padding(.horizontal, 7)
-            .frame(height: 34)
+            header
             WorkspaceRule()
             if loading {
                 ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -89,9 +64,8 @@ struct GitView: View {
             } else if let snapshot {
                 VStack(spacing: 0) {
                     if page == .history {
-                        ViewThatFits(in: .horizontal) {
-                            historyTable(showAuthor: true).frame(minWidth: 640)
-                            historyTable(showAuthor: false)
+                        GeometryReader { geometry in
+                            historyTable(showAuthor: geometry.size.width >= 640)
                         }
                         .frame(height: historyHeight)
                         WorkspaceRule()
@@ -115,42 +89,60 @@ struct GitView: View {
         .onChange(of: page) { _, page in chooseDefault(page) }
     }
 
+    private struct GitSurfaceState: Encodable, Equatable {
+        struct Row: Encodable, Equatable {
+            let id: String
+            let title: String
+            let selected: Bool
+            var icon = ""
+            var tip = ""
+            var detail = ""
+            var author = ""
+            var date = ""
+            var revision = ""
+        }
+
+        let dark: Bool
+        let rows: [Row]
+        var details = ""
+        var showAuthor = false
+    }
+
+    private var header: some View {
+        let state = GitSurfaceState(dark: colorScheme == .dark, rows: Page.allCases.map { item in
+            let title = item == .changes && snapshot != nil ? "Changes (\(snapshot?.total ?? 0))" : item.rawValue
+            return GitSurfaceState.Row(id: item.rawValue, title: title, selected: item == page)
+        }, details: snapshot?.branch ?? "")
+        return NativeShellSurface(region: .gitHeader, state: state) { action, _ in
+            switch action.name {
+            case "git_page":
+                if let next = action.id.flatMap(Page.init(rawValue:)) { page = next }
+            case "git_reload": reload = UUID()
+            default: break
+            }
+        }
+        .frame(height: 34)
+    }
+
     @ViewBuilder
     private func changeList(_ snapshot: GitChanges) -> some View {
         if snapshot.changes.isEmpty {
             empty("Working tree clean", "There are no changes in the selected folder.")
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(snapshot.changes) { change in
-                        let target = Selection(path: change.path)
-                        Button { selected = target } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: statusIcon(change.unstaged ?? change.staged))
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(statusColor(change.unstaged ?? change.staged))
-                                    .frame(width: 14)
-                                    .accessibilityHidden(true)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(change.path).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
-                                    Text([change.staged.map { "Staged · \($0)" }, change.unstaged].compactMap { $0 }.joined(separator: "  ·  "))
-                                        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            }
-                            .padding(.horizontal, 7).padding(.vertical, 5)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(WorkspaceButton(selected: selected == target))
-                        .accessibilityAddTraits(selected == target ? .isSelected : [])
-                        .help(change.path)
-                    }
-                    if snapshot.total > snapshot.changes.count {
-                        Text("Showing the first \(snapshot.changes.count) changes.")
-                            .font(.caption).foregroundStyle(.secondary).padding(6)
-                    }
-                }.padding(6)
+            let state = GitSurfaceState(dark: colorScheme == .dark, rows: snapshot.changes.map { change in
+                let detail = [change.staged.map { "Staged · \($0)" }, change.unstaged].compactMap { $0 }.joined(separator: "  ·  ")
+                return GitSurfaceState.Row(
+                    id: change.path, title: change.path, selected: selected == Selection(path: change.path),
+                    icon: statusIcon(change.unstaged ?? change.staged), tip: change.path, detail: detail
+                )
+            }, details: snapshot.total > snapshot.changes.count ? "Showing the first \(snapshot.changes.count) changes." : "")
+            NativeShellSurface(region: .gitChanges, state: state) { action, _ in
+                if action.name == "git_change", let path = action.id,
+                   snapshot.changes.contains(where: { $0.path == path }) {
+                    selected = Selection(path: path)
+                }
             }
+            .accessibilityLabel("Changes")
         }
     }
 
@@ -161,48 +153,23 @@ struct GitView: View {
         } else if let historyError {
             empty("History could not be read", historyError)
         } else if let history, !history.commits.isEmpty {
-            VStack(spacing: 0) {
-                historyRow(summary: "Summary", author: "Author", date: "Date", sha: "Commit", showAuthor: showAuthor)
-                    .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-                    .accessibilityAddTraits(.isHeader)
-                    .padding(.horizontal, 4)
-                WorkspaceRule()
-                ScrollView {
-                    LazyVStack(spacing: 1) {
-                        ForEach(history.commits) { commit in
-                            let target = Selection(path: location.path, commit: commit.id)
-                            Button { selected = target } label: {
-                                historyRow(summary: commit.summary, author: commit.author,
-                                           date: commit.date.formatted(date: .abbreviated, time: .omitted),
-                                           sha: String(commit.id.prefix(8)), showAuthor: showAuthor)
-                            }
-                            .buttonStyle(WorkspaceButton(selected: selected == target))
-                            .accessibilityAddTraits(selected == target ? .isSelected : [])
-                            .help("\(commit.summary) · \(commit.author)")
-                        }
-                        if history.limited {
-                            Text("Showing recent history.").font(.caption).foregroundStyle(.secondary).padding(6)
-                        }
-                    }.padding(.horizontal, 4).padding(.vertical, 3)
+            let state = GitSurfaceState(dark: colorScheme == .dark, rows: history.commits.map { commit in
+                GitSurfaceState.Row(
+                    id: commit.id, title: commit.summary, selected: selected?.commit == commit.id,
+                    tip: "\(commit.summary) · \(commit.author)", author: commit.author,
+                    date: commit.date.formatted(date: .abbreviated, time: .omitted), revision: String(commit.id.prefix(8))
+                )
+            }, details: history.limited ? "Showing recent history." : "", showAuthor: showAuthor)
+            NativeShellSurface(region: .gitHistory, state: state) { action, _ in
+                if action.name == "git_commit", let id = action.id,
+                   history.commits.contains(where: { $0.id == id }) {
+                    selected = Selection(path: location.path, commit: id)
                 }
             }
+            .accessibilityLabel("File History")
         } else {
             empty("No commits at this path", "File History shows commits affecting the selected file.")
         }
-    }
-
-    private func historyRow(summary: String, author: String, date: String, sha: String, showAuthor: Bool) -> some View {
-        HStack(spacing: 9) {
-            Text(summary).frame(maxWidth: .infinity, alignment: .leading)
-            if showAuthor { Text(author).foregroundStyle(.secondary).frame(width: 116, alignment: .leading) }
-            Text(date).foregroundStyle(.secondary).frame(width: 86, alignment: .leading)
-            Text(sha).monospaced().foregroundStyle(.secondary).frame(width: 67, alignment: .leading)
-        }
-        .font(.system(size: 12))
-        .lineLimit(1)
-        .padding(.horizontal, 9)
-        .frame(height: 24)
-        .contentShape(Rectangle())
     }
 
     private func statusIcon(_ status: String?) -> String {
@@ -211,15 +178,6 @@ struct GitView: View {
         case "Deleted": "minus.square"
         case "Conflict": "exclamationmark.square"
         default: "square.and.pencil"
-        }
-    }
-
-    private func statusColor(_ status: String?) -> Color {
-        switch status {
-        case "Added", "Untracked": .green
-        case "Deleted": .red
-        case "Conflict": .orange
-        default: WorkspaceStyle.focus
         }
     }
 

@@ -48,6 +48,7 @@ jobs:
           status=0
           "$cli" --new-instance --version || status=$?
           test "$status" -eq 2
+          cargo clippy --locked -p folio-ui --all-targets -- -D warnings
           cargo test --locked --workspace
           npm test --prefix renderer
           scripts/check-consumer

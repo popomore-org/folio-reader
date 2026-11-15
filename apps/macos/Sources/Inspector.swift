@@ -4,18 +4,11 @@ struct Inspector: View {
     let tab: ReaderTab?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Outline").font(.callout.weight(.semibold))
-                .padding(.horizontal, 12).frame(height: 33)
-            WorkspaceRule()
-            if let tab {
-                TabOutline(tab: tab)
-            } else {
-                Text("No headings").foregroundStyle(.secondary).padding(12)
-            }
+        if let tab {
+            TabOutline(tab: tab)
+        } else {
+            OutlineSurface(rows: [], disabled: true, message: "No headings") { _ in }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(WorkspaceStyle.surface)
     }
 }
 
@@ -23,26 +16,44 @@ private struct TabOutline: View {
     @ObservedObject var tab: ReaderTab
 
     var body: some View {
-        let headings = tab.document?.preview?.headings ?? []
-        if headings.isEmpty {
-            Text("No headings in this file.").font(.callout).foregroundStyle(.secondary).padding(12)
-        } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(headings) { heading in
-                        Button {
-                            tab.web?.heading(heading.id)
-                        } label: {
-                            Text(heading.title)
-                                .font(.system(size: 12, weight: heading.level <= 2 ? .medium : .regular))
-                                .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.leading, CGFloat(max(0, heading.level - 1) * 9))
-                                .padding(.vertical, 5)
-                        }
-                        .buttonStyle(.plain).help(heading.title).disabled(tab.editing)
-                    }
-                }.padding(11)
-            }
+        OutlineSurface(
+            rows: (tab.document?.preview?.headings ?? []).map {
+                OutlineSurface.Row(id: $0.id, title: $0.title, depth: max(0, $0.level - 1))
+            },
+            disabled: tab.editing,
+            message: "No headings in this file."
+        ) { tab.web?.heading($0) }
+    }
+}
+
+private struct OutlineSurface: View {
+    struct Row: Encodable, Equatable {
+        let id: String
+        let title: String
+        let depth: Int
+    }
+
+    struct State: Encodable, Equatable {
+        let dark: Bool
+        let title = "Outline"
+        let rows: [Row]
+        let disabled: Bool
+        let details: String
+    }
+
+    let rows: [Row]
+    let disabled: Bool
+    let message: String
+    let jump: (String) -> Void
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        NativeShellSurface(region: .outline, state: State(dark: colorScheme == .dark, rows: rows,
+                                                           disabled: disabled, details: message)) { action, _ in
+            if action.name == "heading", let id = action.id, !disabled { jump(id) }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(WorkspaceStyle.surface)
+        .accessibilityLabel("Outline")
     }
 }

@@ -47,7 +47,7 @@ quicklook="$staged/Contents/PlugIns/FolioQuickLook.appex"
 mkdir -p "$staged/Contents/"{MacOS,Resources,Frameworks,Helpers} "$stage/app.iconset"
 mkdir -p "$quicklook/Contents/"{MacOS,Resources}
 
-rustup run "$rust_version" cargo build --locked --release --target "$target" -p folio-bridge >&2
+rustup run "$rust_version" cargo build --locked --release --target "$target" -p folio-ui -p folio-bridge >&2
 npm ci --prefix renderer --ignore-scripts --no-audit --no-fund >&2
 npm run --prefix renderer build -- "$staged/Contents/Resources" >&2
 cp apps/macos/Resources/* "$staged/Contents/Resources/"
@@ -94,8 +94,10 @@ iconutil -c icns "$stage/app.iconset" -o "$staged/Contents/Resources/Folio.icns"
 xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-errors -O \
   -import-objc-header apps/macos/Bridge.h -F "$sparkle" -framework Sparkle \
   -Xlinker -rpath -Xlinker '@executable_path/../Frameworks' \
-  apps/macos/Sources/*.swift "$CARGO_TARGET_DIR/$target/release/libfolio_bridge.a" \
+  apps/macos/Sources/*.swift "$CARGO_TARGET_DIR/$target/release/libfolio_ui.a" \
   -lz -liconv -framework Security -framework SystemConfiguration -framework CoreFoundation \
+  -framework Carbon -framework CoreGraphics -framework ImageIO -framework IOKit \
+  -framework CoreText -framework IOSurface -framework AppKit -framework QuartzCore \
   -o "$staged/Contents/MacOS/Folio"
 xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-errors -O \
   -application-extension -parse-as-library -module-name FolioQuickLook \

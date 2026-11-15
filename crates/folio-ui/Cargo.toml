@@ -1,0 +1,18 @@
+[package]
+name = "folio-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+folio-bridge = { path = "../folio-bridge" }
+nsh-core = "=0.5.1"
+nsh-platform-macos = { version = "=0.5.1", default-features = false }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSImageView"] }
+serde.workspace = true
+serde_json.workspace = true
+tokio = { version = "1", features = ["sync"] }

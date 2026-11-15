@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/folio-core", "crates/folio-bridge"]
+members = ["crates/folio-core", "crates/folio-bridge", "crates/folio-ui"]
 resolver = "3"
 
 [workspace.package]

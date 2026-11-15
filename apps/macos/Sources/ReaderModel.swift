@@ -36,6 +36,7 @@ final class ReaderTab: ObservableObject, Identifiable {
     var pendingFragment: String?
     var scrollOffset = 0.0
     private var readTask: Task<Void, Never>?
+    private var previewNeedsReload = false
 
     init(location: FileLocation) { self.location = location }
 
@@ -50,6 +51,7 @@ final class ReaderTab: ObservableObject, Identifiable {
         editing = false
         draft = ""
         document = nil
+        previewNeedsReload = false
         loadError = nil
         loading = true
         readTask = Task { [weak self] in
@@ -82,16 +84,16 @@ final class ReaderTab: ObservableObject, Identifiable {
 
     @discardableResult
     func save() -> Bool {
-        guard editing, let revision = document?.revision else { return false }
-        if !dirty {
-            editing = false
-            return true
-        }
+        guard editing, let document, let revision = document.revision else { return false }
+        guard dirty else { return true }
         do {
-            let result: String? = try Core.request("save", root: location.root, path: location.path,
-                                                   values: ["revision": revision, "source": draft])
-            guard result != nil else { throw CoreError(message: "The file could not be saved.") }
-            load()
+            let savedRevision: String? = try Core.request("save", root: location.root, path: location.path,
+                                                          values: ["revision": revision, "source": draft])
+            guard let savedRevision else { throw CoreError(message: "The file could not be saved.") }
+            let fileSize = try? location.url?.resourceValues(forKeys: [.fileSizeKey]).fileSize
+            previewNeedsReload = true
+            self.document = Document(kind: document.kind, bytes: fileSize.map(Int64.init) ?? document.bytes,
+                                     source: draft, revision: savedRevision, preview: document.preview)
             return true
         } catch {
             self.error = error.localizedDescription
@@ -99,26 +101,30 @@ final class ReaderTab: ObservableObject, Identifiable {
         }
     }
 
-    func leaveDraft() -> Bool {
-        guard dirty else {
-            editing = false
-            return true
+    func leaveDraft(reload: Bool = false) -> Bool {
+        if dirty {
+            let alert = NSAlert()
+            alert.messageText = "Save changes to \(title)?"
+            alert.informativeText = "Discarding changes restores the version currently on disk."
+            alert.addButton(withTitle: "Save")
+            alert.addButton(withTitle: "Cancel")
+            let discard = alert.addButton(withTitle: "Discard Changes")
+            discard.hasDestructiveAction = true
+            switch alert.runModal() {
+            case .alertFirstButtonReturn:
+                guard save() else { return false }
+            case .alertThirdButtonReturn:
+                draft = ""
+            default:
+                return false
+            }
         }
-        let alert = NSAlert()
-        alert.messageText = "Save changes to \(title)?"
-        alert.informativeText = "Discarding changes restores the version currently on disk."
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-        let discard = alert.addButton(withTitle: "Discard Changes")
-        discard.hasDestructiveAction = true
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: return save()
-        case .alertThirdButtonReturn:
+        if reload || previewNeedsReload {
+            load()
+        } else {
             editing = false
-            draft = ""
-            return true
-        default: return false
         }
+        return true
     }
 }
 
@@ -316,8 +322,7 @@ final class ReaderModel: ObservableObject {
     func reload() {
         if showingGit {
             gitRefresh = UUID()
-        } else if let active, active.leaveDraft() {
-            active.load()
+        } else if let active, active.leaveDraft(reload: true) {
             gitRefresh = UUID()
         } else if active == nil, let selectedRoot {
             refreshFolder(selectedRoot)

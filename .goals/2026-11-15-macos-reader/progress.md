@@ -2,10 +2,10 @@
 
 ## Current
 
-- Status: 原生目标为 active。应用、独立 Cargo 消费、隔离包更新和 Finder 文件关联已验证。新加的 Markdown 快速查看扩展已构建、签名与注册，原生渲染验证通过。
-- Blockers: Finder 按空格与「打开方式」实点待电脑操作恢复。Meta #54 等待合并授权，正式更新待批准分发仓库、配置 Apple 签名和公证凭据及稳定更新密钥。
-- Next: 更新 Folio #1 与 Meta 候选的提交，复核 CI 和合并检查。之后完成 Finder 验收，并在正式渠道就绪时测试公证包及 HTTPS 更新。
-- Branch/PR: feat/macos-reader / Folio #1，Meta #54
+- Status: 原生目标为 blocked。NSH 迁移通过本地原生验证。Meta #54 已合并，可信 Meta main 对固定 Folio #1 返回 ready。
+- Blockers: NSH 后续 PR 依赖 Folio #1 的首次 CI 接入。Finder 空格实际调用、正式签名、公证和 HTTPS 更新另待验收。
+- Next: 提交 NSH 后续 PR，核对当前提交的 CI 与审阅状态。首次接入合并后，将后续 PR 改投默认分支并重新验证。
+- Branch/PR: feat/nsh-workspace 基于 feat/macos-reader / Folio #1。
 
 ## Plan
 
@@ -18,6 +18,7 @@
 | Zed 交互与视觉 | 浅色和深色布局、目录与分栏、Git 在原生窗口可用 | complete |
 | 自动更新 | 本地真实升级及失败路径，正式分发与安装独立验收 | in progress |
 | Finder 快速查看 | 扩展随包签名，预览渲染通过，Finder 空格实点确认 | in progress |
+| Native Shell 迁移 | 正常窗口使用 NSH 组件，打包与本地原生交互回归通过 | complete |
 | PR | 当前提交满足 Meta 默认分支合并检查 | pending |
 
 ## Steps
@@ -197,3 +198,47 @@
 - 随 macOS 应用打包只读数据型 Quick Look 扩展，导入常见 Markdown 类型。扩展直接读取系统提供的单个文件，复用正文 CSS 与 Rust 渲染，HTML 禁止脚本与外部资源。
 - Apple Silicon 预览包完成深度签名校验。PlugInKit 返回已注册扩展，Mach-O 最低系统为 macOS 14。原生 Swift 样例直接验证中文、UTF-8 BOM、GFM 表格、任务清单、Markdown 代码块、安全策略、无效编码与超限文件。
 - macOS 27.0.1 的 `qlmanage -p -o` 能生成 PDF 预览。测试 Markdown 时系统启动了 Folio 扩展进程，但命令行宿主在 ExtensionFoundation 建立连接时抛出字典键为空的异常。两种调用模式均复现。电脑控制仍停止，Finder 实按空格尚未验收。
+- 用同一命令测试 Xcode 自带的 `.mobileprovision` 快速查看扩展，复现相同的宿主异常。ZIP 解包后校验内嵌扩展的 arm64、CSS、只读沙盒权限和深度签名均通过。
+- Folio #1 `ef6c206` 的 CI 43696415833 通过。Meta #54 `b670a88` 的 CI 43696464255 和候选检查 43696464259 通过。可信 Meta main 对登记 PR 返回 ready，候选 Meta 对 Folio 返回 ready，可信 Meta main 仍未登记 Folio。未合并。
+
+### Step 29 — 2026-11-15 — 复核 Finder 与交付卡点
+
+- 通过 Launch Services 在后台启动苹果的 `qlmanage.app`，用无窗口导出测试 `.md` 和 `.markdown`。宿主在建立扩展连接时仍以相同异常退出，生成零份预览。Finder 按空格的实际效果仍需手工验证。
+- 两个 PR 的当前 head 保持不变且检查全绿。可信 Meta main 对 #54、候选 Meta 对 Folio #1 的只读检查仍为 ready。Folio 远端发布环境为空，正式签名、公证和 HTTPS 更新验收待配置。
+
+### Step 30 — 2026-11-15 — 隔离 `qlmanage` 宿主崩溃
+
+- 崩溃报告指向苹果的 ExtensionFoundation 在为 Quick Look 扩展建立连接时向字典传了空键。无窗口命令行引发相同崩溃的对照包括 Xcode 自带的扩展。Clearly 项目公开记录了同一调用栈和错误。
+- 用独立 AppKit 测试程序托管系统公开的 `QLPreviewView`。分别请求 `.md` 与 `.markdown`，系统返回 Folio 扩展的实际 HTML。断言标题为 Coast Survey，表格四行，匹配 Folio 字体及页面内容安全策略。两种扩展名都通过，尚需从 Finder 空格入口验收。
+
+### Step 31 — 2026-11-15 — 优化窗口右上角的阅读与编辑工具
+
+- 将原生编辑开关和编辑时出现的保存按钮放在独立区域。搜索与大纲保持图标位置和选中反馈，设置仍可在窗口右上角打开。只读格式的编辑开关禁用，Git 与空窗口只展示设置。
+- 构建并校验本地预览包。用同一主程序的独立预览在 macOS 27.0.1 实际打开搜索、大纲和设置，切换到编辑后输入并保存样本 Markdown，核对返回阅读的新正文。打开只读 HTML 验证点击和快捷键所对应的编辑状态不可用。改动留在当前分支的本地工作区。
+
+### Step 32 — 2026-11-15 — 把阅读与源码分段控件移到当前文件
+
+- 按用户提供的两张示例图，把开关改为只有图标的两段切换，放在各自分栏的文件面包屑末尾。编辑态的 Save 同行显示，只读文件锁定到阅读，右上角保留搜索、大纲和设置。
+- macOS 27.0.1 实测左右栏不同文件分别进入阅读和源码，激活切换所在栏；验证取消退出编辑后草稿和选中状态保留、保存写入、只读 HTML 与快捷键拦截，以及长路径下文件名与模式控件仍可见。预览包通过构建和签名，改动在本地。
+
+### Step 33 — 2026-11-15 — 修复全屏标题栏底色
+
+- 用截图对应的只读 HTML 在 macOS 原生全屏重现标题栏白带。当前版本可见文件名后的模式控件；旧的工具栏预览未包含该控件。
+- 将工作区窗口的原生底色绑定到导航底色。修复前全屏标题栏与导航采样不同，修复后浅色和深色在窗口及全屏均一致。实测全屏 HTML 的只读状态、Markdown 阅读和源码切换，以及系统菜单退出全屏。新版已构建及通过签名校验，在本地。
+
+### Step 34 — 2026-11-15 — 文件保存保留源码模式
+
+- Save 和 ⌘S 更新已保存内容及版本，保留当前编辑器。离开源码模式时按需刷新阅读预览，继续使用草稿确认。
+- 本地原生预览实测无改动时保存、快捷键和按钮连续保存、切回阅读后渲染新内容、确认并退出编辑、保存冲突保留草稿及重载后的磁盘版本。预览构建通过，改动在本地。
+
+### Step 35 — 2026-11-15 — 选择 Native Shell 接入方式
+
+- 本地 MusicX `85b0bec` 采用 Rust 组件与 AppKit `AppView`。Folio 采用 crates.io 的 NSH `0.5.1`，以 Rust 组件嵌入原生宿主，沿用当前文件状态和系统服务。
+- 原生目标读回为 blocked。当前工具提供状态查询和结束状态更新，仍无恢复操作。本次授权的本地开发继续，原生目标恢复待用户通过宿主界面操作。
+
+### Step 36 — 2026-11-15 — 验收 Native Shell 工作区
+
+- 目录树、标签栏、大纲、底栏、Git 导航和列表切换到 Rust NSH 组件。macOS 继续托管分栏、文件路径与模式、文档、原生菜单、设置和 Sparkle。
+- macOS 27.0.1 验证浅深外观、双栏 Markdown 和只读 HTML、大纲、目录和标签上下文菜单、180 个样例文件的自动定位和键盘浏览、保存后继续编辑，以及 Git 工作树与提交补丁。
+- 预览包通过深度签名验证，Mach-O 最低版本为 macOS 14.0。Rust lint、测试、独立 Cargo 消费样例和图表渲染测试通过。
+- 可信 Meta `480c4a5` 固定 Folio #1 的 head `ef6c206` 与 base `5ea7f00`，只读检查返回 ready。NSH 迁移以该候选为基线单独提交，等待首次接入完成后改投 main。
