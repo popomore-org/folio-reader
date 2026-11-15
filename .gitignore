@@ -1,0 +1,6 @@
+/target/
+/.build/
+/renderer/node_modules/
+.DS_Store
+
+/dist/

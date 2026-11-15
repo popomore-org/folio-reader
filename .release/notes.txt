@@ -1,0 +1,3 @@
+Folio opens Markdown, text, images, audio, video and more in a native Mac workspace.
+Save multiple folders, open files in tabs or split panes, and browse Git history.
+This release adds automatic update checks, signed downloads, and installation controls in Settings.

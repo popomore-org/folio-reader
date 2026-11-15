@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+mkdir -p .build
+qa=$(mktemp -d "$PWD/.build/update-qa.XXXXXX")
+port="${1:-18736}"
+[[ "$port" =~ ^[0-9]+$ ]] || exit 1
+umask 077
+mkdir "$qa/server" "$qa/installed"
+xcrun swift scripts/macos-update-key.swift generate </dev/null > "$qa/seed"
+export FOLIO_UPDATE_PUBLIC_KEY
+FOLIO_UPDATE_PUBLIC_KEY=$(xcrun swift scripts/macos-update-key.swift < "$qa/seed")
+export FOLIO_UPDATE_FEED="http://localhost:$port/appcast.xml"
+FOLIO_VERSION=0.1.0 scripts/build-macos qa
+ditto ".build/Folio Update QA.app" "$qa/installed/Folio Update QA.app"
+FOLIO_VERSION=0.1.1 scripts/build-macos qa
+ditto -c -k --keepParent ".build/Folio Update QA.app" "$qa/server/Folio-0.1.1.zip"
+printf 'Local QA update to 0.1.1.\n' > "$qa/notes.txt"
+scripts/macos-appcast 0.1.1 "$qa/server/Folio-0.1.1.zip" \
+  "http://localhost:$port/Folio-0.1.1.zip" "$qa/notes.txt" "$qa/server/appcast.xml" "$qa/seed"
+rm "$qa/seed"
+printf '# Update QA\n\nWorkspace files should survive the update.\n' > "$qa/installed/Fixture.md"
+printf '%s\n' "$qa"

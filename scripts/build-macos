@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+arch="$(uname -m)"
+case "$arch" in
+  arm64) target=aarch64-apple-darwin ;;
+  *) echo "Folio currently targets Apple Silicon." >&2; exit 1 ;;
+esac
+
+export MACOSX_DEPLOYMENT_TARGET=14.0
+export CARGO_TARGET_DIR="$PWD/target"
+rust_version="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+build="$PWD/.build"
+mode="${1:-preview}"
+version="${FOLIO_VERSION:-0.1.0}"
+identity=-
+case "$mode" in
+  preview) name="Folio Preview"; bundle_id=org.popomore.folio.preview ;;
+  qa)
+    name="Folio Update QA"
+    bundle_id=org.popomore.folio.update-qa
+    [[ "${FOLIO_UPDATE_FEED:-}" =~ ^http://localhost:[0-9]+/appcast\.xml$ ]] ||
+      { echo "QA requires an HTTP localhost appcast." >&2; exit 1; }
+    ;;
+  release)
+    name=Folio
+    bundle_id=org.popomore.folio
+    identity="${FOLIO_APPLE_SIGNING_IDENTITY:?Set the Developer ID Application signing identity}"
+    [[ "$identity" == "Developer ID Application: "* ]] ||
+      { echo "Release requires a Developer ID Application certificate." >&2; exit 1; }
+    [[ "${FOLIO_UPDATE_FEED:-}" =~ ^https://github\.com/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+/releases/latest/download/appcast\.xml$ ]] ||
+      { echo "Release requires the HTTPS GitHub distribution appcast." >&2; exit 1; }
+    : "${FOLIO_VERSION:?Set the release version from the verified source tag}"
+    ;;
+  *) echo "Usage: scripts/build-macos [preview|qa|release]" >&2; exit 1 ;;
+esac
+build_number="$(scripts/macos-version "$version")"
+bundle="$build/$name.app"
+sparkle="$(scripts/prepare-sparkle)"
+mkdir -p "$build"
+
+stage="$(mktemp -d "$build/stage.XXXXXX")"
+trap 'rm -rf "$stage"' EXIT
+staged="$stage/$name.app"
+quicklook="$staged/Contents/PlugIns/FolioQuickLook.appex"
+mkdir -p "$staged/Contents/"{MacOS,Resources,Frameworks,Helpers} "$stage/app.iconset"
+mkdir -p "$quicklook/Contents/"{MacOS,Resources}
+
+rustup run "$rust_version" cargo build --locked --release --target "$target" -p folio-bridge >&2
+npm ci --prefix renderer --ignore-scripts --no-audit --no-fund >&2
+npm run --prefix renderer build -- "$staged/Contents/Resources" >&2
+cp apps/macos/Resources/* "$staged/Contents/Resources/"
+cp apps/macos/Info.plist "$staged/Contents/"
+cp apps/macos/QuickLook/Info.plist "$quicklook/Contents/"
+cp apps/macos/Resources/reader.css "$quicklook/Contents/Resources/"
+ditto "$sparkle/Sparkle.framework" "$staged/Contents/Frameworks/Sparkle.framework"
+python3 - "$staged/Contents/Info.plist" "$quicklook/Contents/Info.plist" "$mode" "$name" "$bundle_id" "$version" "$build_number" <<'PLIST'
+import base64
+import os
+import plistlib
+import sys
+
+path, extension_path, mode, name, identifier, version, build = sys.argv[1:]
+with open(path, "rb") as file:
+    info = plistlib.load(file)
+info.update(CFBundleDisplayName=name, CFBundleName=name, CFBundleIdentifier=identifier,
+            CFBundleShortVersionString=version, CFBundleVersion=build)
+scheme = {"preview": "folio-reader-preview", "qa": "folio-reader-update-qa", "release": "folio-reader"}[mode]
+info.update(FolioPreviewScheme=scheme, CFBundleURLTypes=[
+    {"CFBundleURLName": identifier + ".quick-preview", "CFBundleURLSchemes": [scheme], "CFBundleTypeRole": "Viewer"},
+])
+if mode != "preview":
+    key = os.environ["FOLIO_UPDATE_PUBLIC_KEY"]
+    if len(base64.b64decode(key, validate=True)) != 32:
+        sys.exit("Expected a base64 Ed25519 public key.")
+    info.update(SUFeedURL=os.environ["FOLIO_UPDATE_FEED"], SUPublicEDKey=key,
+                SUEnableAutomaticChecks=False, SUAllowsAutomaticUpdates=False,
+                SUEnableDownloaderService=False, SUScheduledCheckInterval=86400,
+                SUVerifyUpdateBeforeExtraction=True, SURequireSignedFeed=True)
+if mode == "qa":
+    info["NSAppTransportSecurity"] = {"NSAllowsLocalNetworking": True}
+with open(path, "wb") as file:
+    plistlib.dump(info, file)
+with open(extension_path, "rb") as file:
+    extension = plistlib.load(file)
+extension.update(CFBundleIdentifier=identifier + ".quicklook",
+                 CFBundleShortVersionString=version, CFBundleVersion=build)
+with open(extension_path, "wb") as file:
+    plistlib.dump(extension, file)
+PLIST
+xcrun swift apps/macos/icon.swift "$stage/app.iconset"
+iconutil -c icns "$stage/app.iconset" -o "$staged/Contents/Resources/Folio.icns"
+xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-errors -O \
+  -import-objc-header apps/macos/Bridge.h -F "$sparkle" -framework Sparkle \
+  -Xlinker -rpath -Xlinker '@executable_path/../Frameworks' \
+  apps/macos/Sources/*.swift "$CARGO_TARGET_DIR/$target/release/libfolio_bridge.a" \
+  -lz -liconv -framework Security -framework SystemConfiguration -framework CoreFoundation \
+  -o "$staged/Contents/MacOS/Folio"
+xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-errors -O \
+  -application-extension -parse-as-library -module-name FolioQuickLook \
+  -Xlinker -e -Xlinker _NSExtensionMain -Xlinker -dead_strip \
+  -import-objc-header apps/macos/Bridge.h \
+  apps/macos/Sources/Core.swift apps/macos/QuickLook/PreviewProvider.swift \
+  "$CARGO_TARGET_DIR/$target/release/libfolio_bridge.a" \
+  -lz -liconv -framework Security -framework SystemConfiguration -framework CoreFoundation \
+  -o "$quicklook/Contents/MacOS/FolioQuickLook"
+xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-errors -O \
+  apps/macos/CLI/main.swift -o "$staged/Contents/Helpers/folio"
+sign=(--force --sign "$identity")
+if [[ "$mode" == release ]]; then
+  sign+=(--timestamp --options runtime)
+  if [[ -n "${FOLIO_SIGNING_KEYCHAIN:-}" ]]; then
+    sign+=(--keychain "$FOLIO_SIGNING_KEYCHAIN")
+  fi
+fi
+framework="$staged/Contents/Frameworks/Sparkle.framework"
+version_root="$framework/Versions/Current"
+codesign "${sign[@]}" "$version_root/Autoupdate"
+codesign "${sign[@]}" "$version_root/Updater.app"
+codesign "${sign[@]}" "$version_root/XPCServices/Downloader.xpc"
+codesign "${sign[@]}" "$version_root/XPCServices/Installer.xpc"
+codesign "${sign[@]}" "$framework"
+codesign "${sign[@]}" "$staged/Contents/Helpers/folio"
+codesign "${sign[@]}" --entitlements apps/macos/QuickLook/Entitlements.plist "$quicklook"
+codesign "${sign[@]}" "$staged"
+codesign --verify --deep --strict "$staged"
+rm -rf "$bundle"
+mv "$staged" "$bundle"
+printf '%s\n' "$bundle"

@@ -1,0 +1,19 @@
+{
+  "name": "folio-renderer",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <27" },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "mermaid": "12.3.0",
+    "vega": "6.4.0",
+    "vega-interpreter": "2.3.2",
+    "vega-lite": "6.5.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1"
+  }
+}

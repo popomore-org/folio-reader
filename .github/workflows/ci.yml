@@ -1,0 +1,62 @@
+name: Folio CI
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: folio-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  rust:
+    uses: popomore-org/meta/.github/workflows/ci-rust.yml@a3a966614c0ccd31f4b2255808172390266b1d4f
+    with:
+      runs-on: ubuntu-latest
+      execution: serial
+      clippy-args: --locked --workspace --all-targets -- -D warnings
+      test-command: cargo test --locked --workspace && cargo test --locked -p folio-core --no-default-features
+  macos:
+    runs-on: xcode-27
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Build and verify application
+        run: |
+          xcodebuild -version
+          rustup show active-toolchain
+          node --version
+          app="$(scripts/build-macos)"
+          preview="$app/Contents/PlugIns/FolioQuickLook.appex/Contents/Info.plist"
+          test "$(plutil -extract CFBundleIdentifier raw "$preview")" = org.popomore.folio.preview.quicklook
+          test "$(plutil -extract NSExtension.NSExtensionPointIdentifier raw "$preview")" = com.apple.quicklook.preview
+          test "$(plutil -extract NSExtension.NSExtensionAttributes.QLSupportedContentTypes.0 raw "$preview")" = net.daringfireball.markdown
+          cli="$app/Contents/Helpers/folio"
+          "$cli" --help
+          test "$("$cli" --version)" = "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")"
+          status=0
+          "$cli" --unknown || status=$?
+          test "$status" -eq 2
+          status=0
+          "$cli" "$app/no-such-file" || status=$?
+          test "$status" -eq 1
+          status=0
+          "$cli" --new-instance --version || status=$?
+          test "$status" -eq 2
+          cargo test --locked --workspace
+          npm test --prefix renderer
+          scripts/check-consumer
+  gate:
+    name: CI gate
+    needs: [rust, macos]
+    if: ${{ !cancelled() }}
+    uses: popomore-org/meta/.github/workflows/ci-gate.yml@a3a966614c0ccd31f4b2255808172390266b1d4f
+    with:
+      results: ${{ toJSON(needs) }}
+      required-success: '["rust","macos"]'
+      runs-on: ubuntu-latest

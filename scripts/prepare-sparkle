@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+version=2.10.1
+digest=1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27
+destination="$PWD/.build/sparkle-$version"
+archive="$destination.tar.xz"
+mkdir -p .build
+if [[ ! -f "$destination/.verified-$digest" ]]; then
+  stage=$(mktemp -d "$PWD/.build/sparkle.XXXXXX")
+  trap 'rm -rf "$stage"' EXIT
+  if [[ ! -f "$archive" ]] || ! printf '%s  %s\n' "$digest" "$archive" | shasum -a 256 --check >&2; then
+    curl --fail --location --silent --show-error --proto '=https' --proto-redir '=https' \
+      "https://github.com/sparkle-project/Sparkle/releases/download/$version/Sparkle-$version.tar.xz" \
+      -o "$stage/archive.tar.xz"
+    printf '%s  %s\n' "$digest" "$stage/archive.tar.xz" | shasum -a 256 --check >&2
+    mv "$stage/archive.tar.xz" "$archive"
+  fi
+  mkdir "$stage/distribution"
+  tar -xJf "$archive" -C "$stage/distribution"
+  test -f "$stage/distribution/Sparkle.framework/Sparkle"
+  touch "$stage/distribution/.verified-$digest"
+  rm -rf "$destination"
+  mv "$stage/distribution" "$destination"
+fi
+printf '%s\n' "$destination"
