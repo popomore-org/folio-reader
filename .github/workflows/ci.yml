@@ -34,7 +34,11 @@ jobs:
           rustup show active-toolchain
           node --version
           app="$(scripts/build-macos)"
+          info="$app/Contents/Info.plist"
           preview="$app/Contents/PlugIns/FolioQuickLook.appex/Contents/Info.plist"
+          test "${app##*/}" = Folio.app
+          test "$(plutil -extract CFBundleDisplayName raw "$info")" = Folio
+          test "$(plutil -extract CFBundleDisplayName raw "$preview")" = Folio
           test "$(plutil -extract CFBundleIdentifier raw "$preview")" = org.popomore.folio.preview.quicklook
           test "$(plutil -extract NSExtension.NSExtensionPointIdentifier raw "$preview")" = com.apple.quicklook.preview
           scripts/check-quicklook "$app"
@@ -44,7 +48,7 @@ jobs:
           "$RUNNER_TEMP/folio-private-update-check"
           cli="$app/Contents/Helpers/folio"
           "$cli" --help
-          test "$("$cli" --version)" = "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")"
+          test "$("$cli" --version)" = "$(plutil -extract CFBundleShortVersionString raw "$info")"
           status=0
           "$cli" --unknown || status=$?
           test "$status" -eq 2

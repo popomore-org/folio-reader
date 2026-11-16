@@ -15,7 +15,7 @@ Folio 将已验签的下载暂存在本次运行内。确认安装，或事先�
 - 在仓库 Actions secrets 添加 `RELEASE_TAG_TOKEN`，使用只可写入此仓库 Contents 的 GitHub App 或细粒度 PAT。GitHub Actions 自带 token 可上传 Release assets，但用它创建 tag 无法触发独立的 tag-push workflow。
 - 在 `folio-macos-preview` 环境设置 `FOLIO_UPDATE_PUBLIC_KEY` 变量及 `FOLIO_UPDATE_PRIVATE_KEY` secret。生成和保管方法与稳定版相同，两个环境使用各自的 Ed25519 密钥。预览不使用 Developer ID 或公证凭据。
 - 每个预览在同一私有仓库发布为不可变的 prerelease，附带 ad hoc Apple Silicon DMG、SHA-256、Sparkle ZIP 和签名 appcast。Preview 使用独立的 bundle ID 和系统钥匙串项，只从已发布且带更新资产的不可变预览版本选取更新。正式版继续使用 stable latest。
-- 首个手工预览 `preview-v0.1.0` 需要手动换成首个自动预览包一次。此后可在 Preview 的 **Settings → Updates → GitHub Access** 配置仓库只读 token 来检查并安装更新。
+- 首个手工预览 `preview-v0.1.0` 需要手动换成首个自动预览包一次。此后可在 Folio 的 **Settings → Updates → GitHub Access** 配置仓库只读 token 来检查并安装更新。
 
 ## 正式分发
 

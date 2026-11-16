@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
-    <key>CFBundleDisplayName</key><string>Folio Preview</string>
+    <key>CFBundleDisplayName</key><string>Folio</string>
     <key>CFBundleExecutable</key><string>Folio</string>
     <key>CFBundleIdentifier</key><string>org.popomore.folio.preview</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-    <key>CFBundleName</key><string>Folio Preview</string>
+    <key>CFBundleName</key><string>Folio</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleIconFile</key><string>Folio</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>

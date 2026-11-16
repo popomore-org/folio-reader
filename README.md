@@ -38,8 +38,7 @@ DOCX 和 EPUB 目前可从未知格式提示打开系统默认应用。目录默
 构建需要 Apple Silicon Mac、Xcode 27.2、Rust 1.97.0、Node 26.13.0。使用 `rust-toolchain.toml`、`.node-version` 和两个锁文件。
 
 ```sh
-scripts/build-macos
-open ".build/Folio Preview.app"
+open "$(scripts/build-macos)"
 cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace
@@ -56,7 +55,7 @@ Folio 应用包内含 Apple Silicon 版 `folio` 命令，依赖 macOS 14 及以�
 
 ```sh
 "/Applications/Folio.app/Contents/Helpers/folio" install
-# 源码构建使用 ".build/Folio Preview.app/Contents/Helpers/folio" install
+# 源码构建使用 ".build/preview/Folio.app/Contents/Helpers/folio" install
 ```
 
 安装会将 `~/.local/bin/folio` 链接到应用内的命令。同一位置重复安装可安全执行，已有其他同名命令时会报错。如果找不到命令，把 `~/.local/bin` 加到 `PATH`。应用原地升级时会一并更新命令。卸载命令时移除该链接即可，工作区数据仍保留。

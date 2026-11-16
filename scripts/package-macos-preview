@@ -30,9 +30,9 @@ stem="Folio-Preview-$artifact_version-arm64"
 mkdir -p dist "$stage/dmg"
 rm -f "dist/$stem.zip" "dist/$stem.dmg"
 ditto -c -k --keepParent "$bundle" "dist/$stem.zip"
-ditto "$bundle" "$stage/dmg/Folio Preview.app"
+ditto "$bundle" "$stage/dmg/Folio.app"
 ln -s /Applications "$stage/dmg/Applications"
-hdiutil create -volname "Folio Preview" -srcfolder "$stage/dmg" -format UDZO "dist/$stem.dmg"
+hdiutil create -volname Folio -srcfolder "$stage/dmg" -format UDZO "dist/$stem.dmg"
 hdiutil verify -quiet "dist/$stem.dmg"
 (cd dist && shasum -a 256 "$stem.dmg" > "$stem.dmg.sha256")
 scripts/macos-appcast "$FOLIO_VERSION" "dist/$stem.zip" \

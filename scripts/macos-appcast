@@ -29,8 +29,7 @@ item = ET.SubElement(channel, "item")
 suffix = os.environ.get("FOLIO_PREVIEW_SUFFIX")
 version_arguments = [version, suffix] if suffix else [version]
 display_version = version + "-" + suffix.replace("-", ".g") if suffix else version
-app_name = "Folio Preview" if suffix else "Folio"
-ET.SubElement(item, "title").text = f"{app_name} {display_version}"
+ET.SubElement(item, "title").text = f"Folio {display_version}"
 ET.SubElement(item, "description", {sparkle_tag("format"): "plain-text"}).text = Path(notes).read_text().strip()
 ET.SubElement(item, sparkle_tag("version")).text = check_output(["scripts/macos-version", *version_arguments], text=True).strip()
 ET.SubElement(item, sparkle_tag("shortVersionString")).text = display_version
