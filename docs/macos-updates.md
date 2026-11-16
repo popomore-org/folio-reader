@@ -45,3 +45,8 @@ prereleases and use their own Sparkle key, app identity, and ad hoc signature.
 Set the corresponding Sparkle variable and secret in `folio-macos-preview`.
 Public previews check GitHub Releases without a token. The original
 `preview-v0.1.0` package requires a manual upgrade to a signed-update preview.
+
+If your installed preview only recognizes `Folio-Preview-…zip` downloads,
+install the Folio DMG that introduces support for the renamed archives once.
+Replace `Folio.app` in Applications, then use **Settings → Updates** for later
+previews.
