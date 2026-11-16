@@ -100,6 +100,9 @@ struct SourceEditor: NSViewRepresentable {
             editor.isAutomaticDashSubstitutionEnabled = false
             editor.isAutomaticTextReplacementEnabled = false
             editor.setAccessibilityLabel("Document Source")
+            scroll.hasVerticalRuler = true
+            scroll.verticalRulerView = SourceLineRuler(scrollView: scroll, editor: editor)
+            scroll.rulersVisible = true
             context.coordinator.highlight(editor, immediately: true)
             DispatchQueue.main.async { editor.window?.makeFirstResponder(editor) }
         }
@@ -113,6 +116,7 @@ struct SourceEditor: NSViewRepresentable {
         guard let editor = view.documentView as? NSTextView else { return }
         if editor.string != text {
             editor.string = text
+            (view.verticalRulerView as? SourceLineRuler)?.refreshLineStarts()
             coordinator.highlight(editor, immediately: true)
         } else if refreshColors {
             coordinator.highlight(editor, immediately: true)
@@ -132,6 +136,7 @@ struct SourceEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let editor = notification.object as? NSTextView else { return }
             owner.text = editor.string
+            (editor.enclosingScrollView?.verticalRulerView as? SourceLineRuler)?.refreshLineStarts()
             highlight(editor)
         }
 

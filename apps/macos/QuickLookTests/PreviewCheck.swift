@@ -58,12 +58,15 @@ struct PreviewCheck {
         let lua = try html("module.lua", "local count = 42", root: root, resources: resources)
         try require(lua.contains("syntax-keyword") && lua.contains("syntax-constant"),
                     "A Lua source file should be recognized and highlighted in Quick Look.")
-        let code = try html("example.swift", "let count = 42", root: root, resources: resources)
-        try require(code.contains("<span class=\"syntax syntax-keyword\">let</span>"),
-                    "A source document should include highlighted code in Quick Look.")
+        let number = "<span class=\"code-line-number\" aria-hidden=\"true\"></span>"
+        let code = try html("example.swift", "let count = 42\n\nprint(count)", root: root, resources: resources)
+        try require(code.contains("<span class=\"syntax syntax-keyword\">let</span>") &&
+                    code.components(separatedBy: number).count == 4 && code.contains("counter(code-line)"),
+                    "A source document should include highlighted code and a number for each line in Quick Look.")
         let fenced = try html("Code.md", "```swift\nlet count = 42\n```", root: root, resources: resources)
-        try require(fenced.contains("language-swift") && fenced.contains("syntax-constant"),
-                    "A Markdown code fence should be highlighted in Quick Look.")
+        try require(fenced.contains("language-swift") && fenced.contains("syntax-constant") &&
+                    fenced.components(separatedBy: number).count == 2,
+                    "A Markdown code fence should be highlighted and numbered in Quick Look.")
         let editorSpans = try Core.sourceHighlights(for: "example.swift", source: "let face = \"😀\"; let count = 42")
         try require(editorSpans.contains { $0.token == .constant && $0.start == 29 && $0.end == 31 },
                     "The native editor should receive color ranges in UTF-16 coordinates.")

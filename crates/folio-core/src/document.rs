@@ -188,14 +188,22 @@ pub fn render_markdown(source: &str) -> Preview {
     let mut used = HashSet::new();
     let mut code_block = None;
     let mut highlight_budget = syntax::MAX_HIGHLIGHT_BYTES;
+    let mut line_budget = syntax::MAX_NUMBERED_LINES;
     for event in Parser::new_ext(source, options) {
         match &event {
-            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info))) if highlight_budget > 0 => {
-                code_block = info
-                    .split_whitespace()
-                    .next()
-                    .and_then(syntax::for_token)
-                    .map(|grammar| (events.len(), grammar));
+            Event::Start(Tag::CodeBlock(kind)) => {
+                let language = match kind {
+                    CodeBlockKind::Fenced(info) => info.split_whitespace().next().unwrap_or(""),
+                    CodeBlockKind::Indented => "",
+                };
+                if !matches!(language, "mermaid" | "vega-lite") {
+                    let grammar = (highlight_budget > 0)
+                        .then(|| syntax::for_token(language))
+                        .flatten();
+                    if line_budget > 0 || grammar.is_some() {
+                        code_block = Some((events.len(), grammar));
+                    }
+                }
             }
             Event::End(TagEnd::CodeBlock) => {
                 if let Some((start, grammar)) = code_block.take() {
@@ -203,17 +211,14 @@ pub fn render_markdown(source: &str) -> Preview {
                         Event::Text(text) => Some(text.as_ref()),
                         _ => None,
                     });
-                    let bytes = fragments.clone().try_fold(0, |count, text| {
-                        let count = count + text.len();
-                        (count <= highlight_budget).then_some(count)
-                    });
-                    if let Some(bytes) = bytes {
-                        highlight_budget -= bytes;
-                        let source = fragments.collect::<String>();
-                        if let Some(spans) = syntax::html(grammar, &source) {
-                            events.truncate(start + 1);
-                            events.push(Event::Html(spans.into()));
-                        }
+                    let source = fragments.collect::<String>();
+                    let grammar = grammar.filter(|_| source.len() <= highlight_budget);
+                    if grammar.is_some() {
+                        highlight_budget -= source.len();
+                    }
+                    if let Some(code) = syntax::html(grammar, &source, &mut line_budget, false) {
+                        events.truncate(start + 1);
+                        events.push(Event::Html(code.into()));
                     }
                 }
             }
@@ -291,6 +296,7 @@ fn heading_id(title: &str, used: &mut HashSet<String>) -> String {
 pub fn sanitize_html(source: &str) -> String {
     ammonia::Builder::default()
         .add_generic_attributes(["id", "class", "title", "lang", "dir"])
+        .add_tag_attributes("span", ["aria-hidden"])
         .add_tags(["input", "details", "summary"])
         .add_tag_attributes("input", ["type", "disabled", "checked"])
         .add_tag_attribute_values("input", "type", ["checkbox"])

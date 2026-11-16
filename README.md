@@ -33,7 +33,7 @@ Folio 为最多 2 MiB 的 UTF-8 文档渲染 Markdown、源码、静态 HTML 和
 
 DOCX 和 EPUB 目前可从未知格式提示打开系统默认应用。目录默认隐藏点文件和符号链接。Git 变更列表显示前 500 个变化并标记截断。Git 历史沿第一父提交按当前路径查看，最多 50 笔，扫描上限 3,000 个提交，重命名前的路径不自动追溯。
 
-直接打开源码文件即可高亮，阅读与编辑共用 [two-face 语法库](https://docs.rs/two-face/latest/two_face/)，按文件后缀或项目文件名识别语言。在 Markdown 代码围栏上指定语言，例如 `rust` 或 `swift`，即可高亮代码块。深浅外观和 Folio 的 Finder 快速查看共用颜色规则。
+直接打开源码文件即可高亮，阅读与编辑共用 [two-face 语法库](https://docs.rs/two-face/latest/two_face/)，按文件后缀或项目文件名识别语言。在 Markdown 代码围栏上指定语言，例如 `rust` 或 `swift`，即可高亮代码块。源码阅读、编辑和 Markdown 代码块按原始文本行显示行号，复制时只复制代码。Finder 快速查看共用阅读样式。
 
 ## 构建与验证
 

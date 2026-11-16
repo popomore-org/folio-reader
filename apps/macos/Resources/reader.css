@@ -50,6 +50,24 @@ code { background: var(--inset); border-radius: 3px; padding: .13em .27em; }
 pre { overflow: auto; padding: .95em 1.1em; border: 1px solid var(--line); border-radius: 6px; background: var(--inset); line-height: 1.52; }
 pre code { font-size: inherit; background: transparent; padding: 0; }
 .plain { white-space: pre-wrap; background: transparent; border: 0; padding: 0; font-size: .9em; }
+pre:has(> code > .code-line-number) { counter-reset: code-line; padding-inline-start: 8ch; }
+.code-line-number {
+  display: inline-block;
+  position: relative;
+  inline-size: 0;
+  counter-increment: code-line;
+  user-select: none;
+  pointer-events: none;
+}
+.code-line-number::before {
+  content: counter(code-line);
+  position: absolute;
+  inset-inline-end: 1.45ch;
+  inset-block-end: -.25em;
+  color: var(--muted);
+  font-size: .85em;
+  line-height: 1;
+}
 .syntax-comment  { --syntax-light: #5f6878; --syntax-dark: #a1aabd; }
 .syntax-keyword  { --syntax-light: #8b3d92; --syntax-dark: #e3b7f5; }
 .syntax-string,

@@ -3,6 +3,8 @@ use folio_core::{
 };
 use std::path::Path;
 
+const LINE_NUMBER: &str = "<span class=\"code-line-number\" aria-hidden=\"true\"></span>";
+
 #[test]
 fn source_preview_recognizes_common_languages_by_filename() {
     let samples = [
@@ -49,6 +51,11 @@ fn source_preview_recognizes_common_languages_by_filename() {
             "{name}: {}",
             preview.html
         );
+        assert_eq!(
+            preview.html.matches(LINE_NUMBER).count(),
+            source.split('\n').count(),
+            "{name}"
+        );
     }
 }
 
@@ -86,10 +93,43 @@ fn fenced_code_is_highlighted_without_interpreting_source_or_diagrams() {
     assert!(html.contains("<span class=\"syntax syntax-keyword\">let</span>"));
     assert!(html.contains("&lt;script&gt;&amp;value&lt;/script&gt;"));
     assert!(!html.contains("<script>"));
-    assert!(html.contains("<code class=\"language-unknown-language\">let source = 42;"));
+    assert!(html.contains(&format!(
+        "<code class=\"language-unknown-language\">{LINE_NUMBER}let source = 42;"
+    )));
     assert!(html.contains("<code class=\"language-mermaid\">flowchart LR"));
-    assert!(html.contains("<code>let plain = 42;"));
+    assert!(html.contains(&format!("<code>{LINE_NUMBER}let plain = 42;")));
+    assert_eq!(html.matches(LINE_NUMBER).count(), 3);
     assert_eq!(preview.headings[0].title, "Example");
+}
+
+#[test]
+fn line_numbers_follow_blank_lines_and_multiline_colors_without_adding_text() {
+    let source = "/* first\n\n  third */\n";
+    let preview = render_text_preview(Path::new("example.rs"), source)
+        .unwrap()
+        .unwrap();
+    let comment = "<span class=\"syntax syntax-comment\">";
+    assert_eq!(preview.html.matches(LINE_NUMBER).count(), 4);
+    assert!(
+        preview
+            .html
+            .contains(&format!("</span>{LINE_NUMBER}{comment}\n</span>"))
+    );
+    assert_eq!(
+        preview
+            .html
+            .replace(LINE_NUMBER, "")
+            .replace(comment, "")
+            .replace("</span>", ""),
+        format!("<pre class=\"plain\"><code>{source}</code></pre>")
+    );
+
+    let mixed = render_text_preview(Path::new("demo.rs"), "first\r\n\r\nthird\rlast")
+        .unwrap()
+        .unwrap();
+    assert_eq!(mixed.html.matches(LINE_NUMBER).count(), 4);
+    let markdown = render_markdown("> ```\n> first\n>\n> third\n> ```");
+    assert_eq!(markdown.html.matches(LINE_NUMBER).count(), 3);
 }
 
 #[test]
@@ -107,5 +147,12 @@ fn source_colors_use_utf16_offsets_and_keep_large_or_plain_buffers_readable() {
     let preview = render_text_preview(Path::new("demo.rs"), &large)
         .unwrap()
         .unwrap();
-    assert_eq!(preview.html, format!("<pre class=\"plain\">{large}</pre>"));
+    assert_eq!(
+        preview.html,
+        format!("<pre class=\"plain\"><code>{LINE_NUMBER}{large}</code></pre>")
+    );
+    let plain = render_text_preview(Path::new("readme.txt"), "first\nsecond")
+        .unwrap()
+        .unwrap();
+    assert_eq!(plain.html, "<pre class=\"plain\">first\nsecond</pre>");
 }

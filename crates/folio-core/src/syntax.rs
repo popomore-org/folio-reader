@@ -5,6 +5,8 @@ use two_face::re_exports::syntect::parsing::{
 };
 
 pub(crate) const MAX_HIGHLIGHT_BYTES: usize = 128 * 1024;
+// Bound the number of extra DOM elements in a single preview.
+pub(crate) const MAX_NUMBERED_LINES: usize = 20_000;
 const MAX_LINE_BYTES: usize = 8192;
 const MAX_TOKENS: usize = 16384;
 
@@ -131,26 +133,68 @@ pub fn highlight_source(path: &Path, source: &str) -> Vec<SourceHighlight> {
 }
 
 pub(crate) fn html_for_file(path: &Path, source: &str) -> Option<String> {
-    html(for_file(path)?, source)
+    let mut line_budget = MAX_NUMBERED_LINES;
+    html(Some(for_file(path)?), source, &mut line_budget, true)
 }
 
-pub(crate) fn html(syntax: &SyntaxReference, source: &str) -> Option<String> {
-    let spans = tokenize(syntax, source)?;
-    if spans.is_empty() {
+pub(crate) fn html(
+    grammar: Option<&SyntaxReference>,
+    source: &str,
+    line_budget: &mut usize,
+    include_trailing_empty_line: bool,
+) -> Option<String> {
+    let line_ends = source
+        .match_indices(['\r', '\n'])
+        .filter_map(|(offset, character)| {
+            let crlf = character == "\r" && source.as_bytes().get(offset + 1) == Some(&b'\n');
+            (!crlf).then_some(offset + 1)
+        })
+        .chain(
+            (include_trailing_empty_line || !source.ends_with(['\r', '\n']))
+                .then_some(source.len()),
+        );
+    let line_count = line_ends.clone().take(*line_budget + 1).count();
+    let numbered = line_count <= *line_budget;
+    if numbered {
+        *line_budget -= line_count;
+    }
+    let spans = grammar
+        .and_then(|syntax| tokenize(syntax, source))
+        .unwrap_or_default();
+    if !numbered && spans.is_empty() {
         return None;
     }
+
+    use crate::document::escape;
+    let mut spans = spans.into_iter().peekable();
     let mut out = String::new();
     let mut end = 0;
-    for (range, token) in spans {
-        out.push_str(&crate::document::escape(&source[end..range.start]));
-        out.push_str("<span class=\"syntax ");
-        out.push_str(token.class());
-        out.push_str("\">");
-        out.push_str(&crate::document::escape(&source[range.clone()]));
-        out.push_str("</span>");
-        end = range.end;
+    for line_end in line_ends
+        .take(if numbered { line_count } else { 0 })
+        .chain((!numbered).then_some(source.len()))
+    {
+        if numbered {
+            out.push_str("<span class=\"code-line-number\" aria-hidden=\"true\"></span>");
+        }
+        // A multiline syntax span is reopened after the next line's number.
+        while let Some((range, token)) = spans.peek().filter(|(range, _)| range.start < line_end) {
+            let start = range.start.max(end);
+            let color_end = range.end.min(line_end);
+            out.push_str(&escape(&source[end..start]));
+            out.push_str("<span class=\"syntax ");
+            out.push_str(token.class());
+            out.push_str("\">");
+            out.push_str(&escape(&source[start..color_end]));
+            out.push_str("</span>");
+            end = color_end;
+            if range.end > line_end {
+                break;
+            }
+            spans.next();
+        }
+        out.push_str(&escape(&source[end..line_end]));
+        end = line_end;
     }
-    out.push_str(&crate::document::escape(&source[end..]));
     Some(out)
 }
 
