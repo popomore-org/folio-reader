@@ -9,7 +9,7 @@ Usage: folio [--app APP] [-n] [open] [--] [PATH ...]
 
   open      Open files or folders in the workspace. Defaults to the current directory.
   preview   Open a file in the preview window. Omit FILE to choose one in Folio.
-  install   Add folio to ~/.local/bin without replacing an existing command.
+  install   Install or repair the Folio link in ~/.local/bin.
   --app     Use a specific Folio .app bundle. Overrides FOLIO_APP.
   -n, --new-instance
             Start a separate Folio process with an independent workspace.
@@ -110,22 +110,9 @@ private func openInFolio(_ app: BundleInfo, targets: [URL], newInstance: Bool) a
 }
 
 private func install(_ app: BundleInfo) throws {
-    let tool = app.url.appending(path: "Contents/Helpers/folio").resolvingSymlinksInPath()
+    let tool = app.url.appending(path: "Contents/Helpers/folio")
     let directory = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".local/bin", directoryHint: .isDirectory)
-    let link = directory.appending(path: "folio")
-    let files = FileManager.default
-    try files.createDirectory(at: directory, withIntermediateDirectories: true)
-    do {
-        try files.createSymbolicLink(at: link, withDestinationURL: tool)
-    } catch {
-        guard let destination = try? files.destinationOfSymbolicLink(atPath: link.path),
-              destination == tool.path else {
-            if files.fileExists(atPath: link.path) || (try? files.destinationOfSymbolicLink(atPath: link.path)) != nil {
-                throw Failure("\(link.path) already exists. Move it before installing Folio.")
-            }
-            throw error
-        }
-    }
+    let link = try installFolioCommand(tool, in: directory)
     print(link.path)
 }
 

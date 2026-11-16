@@ -58,7 +58,7 @@ Folio 应用包内含 Apple Silicon 版 `folio` 命令，依赖 macOS 14 及以�
 # 源码构建使用 ".build/preview/Folio.app/Contents/Helpers/folio" install
 ```
 
-安装会将 `~/.local/bin/folio` 链接到应用内的命令。同一位置重复安装可安全执行，已有其他同名命令时会报错。如果找不到命令，把 `~/.local/bin` 加到 `PATH`。应用原地升级时会一并更新命令。卸载命令时移除该链接即可，工作区数据仍保留。
+安装会将 `~/.local/bin/folio` 链接到应用内的命令。同一位置重复安装会保留当前链接。旧的 Folio 应用包被移除时，可运行上述安装命令修复失效链接。已有其他同名命令或仍可用的其他位置链接时会报错。如果找不到命令，把 `~/.local/bin` 加到 `PATH`。应用原地升级时会一并更新命令。卸载命令时移除该链接即可，工作区数据仍保留。
 
 ```sh
 folio .                              # 打开当前目录

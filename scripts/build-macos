@@ -123,7 +123,7 @@ xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-erro
   -lz -liconv -framework Security -framework SystemConfiguration -framework CoreFoundation \
   -o "$quicklook/Contents/MacOS/FolioQuickLook"
 xcrun swiftc -swift-version 6 -target "$arch-apple-macosx14.0" -warnings-as-errors -O \
-  apps/macos/CLI/main.swift -o "$staged/Contents/Helpers/folio"
+  apps/macos/CLI/*.swift -o "$staged/Contents/Helpers/folio"
 sign=(--force --sign "$identity")
 if [[ "$mode" == release ]]; then
   sign+=(--timestamp --options runtime)
