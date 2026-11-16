@@ -33,6 +33,8 @@ Folio 为最多 2 MiB 的 UTF-8 文档渲染 Markdown、源码、静态 HTML 和
 
 DOCX 和 EPUB 目前可从未知格式提示打开系统默认应用。目录默认隐藏点文件和符号链接。Git 变更列表显示前 500 个变化并标记截断。Git 历史沿第一父提交按当前路径查看，最多 50 笔，扫描上限 3,000 个提交，重命名前的路径不自动追溯。
 
+源码阅读和编辑会按文件名识别语法。在 Markdown 代码围栏上指定语言，例如 `rust` 或 `swift`，即可高亮代码块。深浅外观和 Folio 的 Finder 快速查看共用颜色规则。
+
 ## 构建与验证
 
 构建需要 Apple Silicon Mac、Xcode 27.2、Rust 1.97.0、Node 26.13.0。使用 `rust-toolchain.toml`、`.node-version` 和两个锁文件。

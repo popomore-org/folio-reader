@@ -1,5 +1,5 @@
-use crate::Error;
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd, html};
+use crate::{Error, syntax};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd, html};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::HashSet, path::Path};
@@ -127,7 +127,11 @@ fn text_preview(kind: FileKind, path: &Path, source: &str) -> Result<Option<Prev
         FileKind::Markdown => render_markdown(source),
         FileKind::Html => Preview::from_html(sanitize_html(source)),
         FileKind::Text => {
-            Preview::from_html(format!("<pre class=\"plain\">{}</pre>", escape(source)))
+            let html = syntax::html_for_file(path, source).map_or_else(
+                || format!("<pre class=\"plain\">{}</pre>", escape(source)),
+                |code| format!("<pre class=\"plain\"><code>{code}</code></pre>"),
+            );
+            Preview::from_html(html)
         }
         FileKind::Mermaid => diagram("mermaid", source),
         FileKind::Vega => diagram("vega-lite", source),
@@ -181,8 +185,37 @@ pub fn render_markdown(source: &str) -> Preview {
     let mut headings = Vec::new();
     let mut current: Option<(usize, HeadingLevel, String)> = None;
     let mut used = HashSet::new();
+    let mut code_block = None;
+    let mut highlight_budget = syntax::MAX_HIGHLIGHT_BYTES;
     for event in Parser::new_ext(source, options) {
         match &event {
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info))) if highlight_budget > 0 => {
+                code_block = info
+                    .split_whitespace()
+                    .next()
+                    .and_then(syntax::for_token)
+                    .map(|grammar| (events.len(), grammar));
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                if let Some((start, grammar)) = code_block.take() {
+                    let fragments = events[start + 1..].iter().filter_map(|event| match event {
+                        Event::Text(text) => Some(text.as_ref()),
+                        _ => None,
+                    });
+                    let bytes = fragments.clone().try_fold(0, |count, text| {
+                        let count = count + text.len();
+                        (count <= highlight_budget).then_some(count)
+                    });
+                    if let Some(bytes) = bytes {
+                        highlight_budget -= bytes;
+                        let source = fragments.collect::<String>();
+                        if let Some(spans) = syntax::html(grammar, &source) {
+                            events.truncate(start + 1);
+                            events.push(Event::Html(spans.into()));
+                        }
+                    }
+                }
+            }
             Event::Start(Tag::Heading { level, .. }) => {
                 current = Some((events.len(), *level, String::new()));
             }
@@ -307,7 +340,7 @@ fn table(source: &str, is_tsv: bool) -> Result<Preview, Error> {
     Ok(Preview::from_html(html))
 }
 
-fn escape(value: &str) -> String {
+pub(crate) fn escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")

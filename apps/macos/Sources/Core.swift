@@ -57,6 +57,16 @@ struct Document: Decodable {
     let preview: Preview?
 }
 
+struct SourceHighlight: Decodable, Sendable {
+    enum Token: String, Decodable, Sendable {
+        case comment, string, keyword, constant, function, type, tag, added, removed
+    }
+
+    let start: Int
+    let end: Int
+    let token: Token
+}
+
 struct History: Decodable {
     struct Commit: Decodable, Identifiable {
         let id: String
@@ -104,6 +114,10 @@ struct Core {
 
     static func textPreview(for name: String, source: String) throws -> Document.Preview? {
         try call(["op": "render_text_preview", "name": name, "source": source])
+    }
+
+    static func sourceHighlights(for name: String, source: String) throws -> [SourceHighlight] {
+        try call(["op": "highlight_source", "name": name, "source": source]) ?? []
     }
 
     private static func call<T: Decodable>(_ body: [String: String]) throws -> T? {

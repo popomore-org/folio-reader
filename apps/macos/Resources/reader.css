@@ -50,6 +50,20 @@ code { background: var(--inset); border-radius: 3px; padding: .13em .27em; }
 pre { overflow: auto; padding: .95em 1.1em; border: 1px solid var(--line); border-radius: 6px; background: var(--inset); line-height: 1.52; }
 pre code { font-size: inherit; background: transparent; padding: 0; }
 .plain { white-space: pre-wrap; background: transparent; border: 0; padding: 0; font-size: .9em; }
+.syntax-comment  { --syntax-light: #5f6878; --syntax-dark: #a1aabd; }
+.syntax-keyword  { --syntax-light: #8b3d92; --syntax-dark: #e3b7f5; }
+.syntax-string,
+.syntax-added    { --syntax-light: #34622e; --syntax-dark: #b1d99b; }
+.syntax-constant { --syntax-light: #9c4b10; --syntax-dark: #f5bb8f; }
+.syntax-type     { --syntax-light: #075e68; --syntax-dark: #9bd7dc; }
+.syntax-function { --syntax-light: #24589b; --syntax-dark: #a9caff; }
+.syntax-tag      { --syntax-light: #a03e65; --syntax-dark: #efa0ba; }
+.syntax-removed  { --syntax-light: #ae3444; --syntax-dark: #ff9faf; }
+pre code .syntax { color: var(--syntax-light); }
+:root[data-color-scheme="dark"] pre code .syntax { color: var(--syntax-dark); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-color-scheme]) pre code .syntax { color: var(--syntax-dark); }
+}
 img { max-width: 100%; height: auto; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 1.65em 0; }
 table { border-collapse: collapse; min-width: 100%; font: .77em/1.45 var(--ui-font); }

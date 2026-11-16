@@ -80,12 +80,16 @@ struct RichText: NSViewRepresentable {
 
 struct SourceEditor: NSViewRepresentable {
     @Binding var text: String
+    let name: String
+    @Environment(\.colorScheme) private var colorScheme
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSTextView.scrollableTextView()
         if let editor = scroll.documentView as? NSTextView {
+            // Temporary colors belong to the layout manager, not the editable text storage.
+            _ = editor.layoutManager
             editor.delegate = context.coordinator
             editor.string = text
             editor.isRichText = false
@@ -96,23 +100,87 @@ struct SourceEditor: NSViewRepresentable {
             editor.isAutomaticDashSubstitutionEnabled = false
             editor.isAutomaticTextReplacementEnabled = false
             editor.setAccessibilityLabel("Document Source")
+            context.coordinator.highlight(editor, immediately: true)
             DispatchQueue.main.async { editor.window?.makeFirstResponder(editor) }
         }
         return scroll
     }
 
     func updateNSView(_ view: NSScrollView, context: Context) {
-        context.coordinator.owner = self
-        if let editor = view.documentView as? NSTextView, editor.string != text { editor.string = text }
+        let coordinator = context.coordinator
+        let refreshColors = coordinator.owner.colorScheme != colorScheme || coordinator.owner.name != name
+        coordinator.owner = self
+        guard let editor = view.documentView as? NSTextView else { return }
+        if editor.string != text {
+            editor.string = text
+            coordinator.highlight(editor, immediately: true)
+        } else if refreshColors {
+            coordinator.highlight(editor, immediately: true)
+        }
+    }
+
+    static func dismantleNSView(_ view: NSScrollView, coordinator: Coordinator) {
+        coordinator.highlightTask?.cancel()
     }
 
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var owner: SourceEditor
+        var highlightTask: Task<Void, Never>?
         init(_ owner: SourceEditor) { self.owner = owner }
+
         func textDidChange(_ notification: Notification) {
-            if let editor = notification.object as? NSTextView { owner.text = editor.string }
+            guard let editor = notification.object as? NSTextView else { return }
+            owner.text = editor.string
+            highlight(editor)
         }
+
+        func highlight(_ editor: NSTextView, immediately: Bool = false) {
+            highlightTask?.cancel()
+            let source = editor.string
+            let name = owner.name
+            // Match the core's input limit before serializing a draft across the bridge.
+            guard !source.isEmpty, source.utf8.count <= 128 * 1024 else {
+                apply([], to: editor)
+                return
+            }
+            highlightTask = Task { [weak self, weak editor] in
+                if !immediately {
+                    do { try await Task.sleep(for: .milliseconds(160)) } catch { return }
+                }
+                let spans = await Task.detached(priority: .userInitiated) {
+                    (try? Core.sourceHighlights(for: name, source: source)) ?? []
+                }.value
+                guard !Task.isCancelled, let self, let editor, editor.string == source, !editor.hasMarkedText() else { return }
+                apply(spans, to: editor)
+            }
+        }
+
+        private func apply(_ spans: [SourceHighlight], to editor: NSTextView) {
+            guard let layout = editor.layoutManager, let length = editor.textStorage?.length, length > 0 else { return }
+            layout.removeTemporaryAttribute(.foregroundColor, forCharacterRange: NSRange(location: 0, length: length))
+            for span in spans where span.start >= 0 && span.end > span.start && span.end <= length {
+                layout.addTemporaryAttribute(.foregroundColor, value: span.token.color(dark: owner.colorScheme == .dark),
+                                             forCharacterRange: NSRange(location: span.start, length: span.end - span.start))
+            }
+        }
+    }
+}
+
+private extension SourceHighlight.Token {
+    func color(dark: Bool) -> NSColor {
+        // These pairs match the reading and Quick Look styles in reader.css.
+        let (lightColor, darkColor): (UInt32, UInt32) = switch self {
+        case .comment: (0x5F6878, 0xA1AABD)
+        case .keyword: (0x8B3D92, 0xE3B7F5)
+        case .string, .added: (0x34622E, 0xB1D99B)
+        case .constant: (0x9C4B10, 0xF5BB8F)
+        case .type: (0x075E68, 0x9BD7DC)
+        case .function: (0x24589B, 0xA9CAFF)
+        case .tag: (0xA03E65, 0xEFA0BA)
+        case .removed: (0xAE3444, 0xFF9FAF)
+        }
+        return WorkspaceStyle.srgb(dark ? darkColor : lightColor)
     }
 }
 

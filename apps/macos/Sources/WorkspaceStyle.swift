@@ -23,7 +23,7 @@ enum WorkspaceStyle {
         })
     }
 
-    private static func srgb(_ value: UInt32) -> NSColor {
+    static func srgb(_ value: UInt32) -> NSColor {
         NSColor(srgbRed: CGFloat((value >> 16) & 255) / 255,
                 green: CGFloat((value >> 8) & 255) / 255,
                 blue: CGFloat(value & 255) / 255, alpha: 1)

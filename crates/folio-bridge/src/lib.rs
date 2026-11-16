@@ -16,6 +16,10 @@ enum Request {
         name: String,
         source: String,
     },
+    HighlightSource {
+        name: String,
+        source: String,
+    },
     List {
         root: String,
         path: String,
@@ -51,6 +55,9 @@ impl Request {
             Self::FileKind { name } => json!(FileKind::from_path(Path::new(&name))),
             Self::RenderTextPreview { name, source } => {
                 json!(folio_core::render_text_preview(Path::new(&name), &source)?)
+            }
+            Self::HighlightSource { name, source } => {
+                json!(folio_core::highlight_source(Path::new(&name), &source))
             }
             Self::List { root, path } => json!(Workspace::open(root)?.list(path)?),
             Self::Read { root, path } => json!(Workspace::open(root)?.read(path)?),

@@ -44,7 +44,10 @@ struct PreviewCheck {
             case .native(let returned):
                 try require(media.contains(suffix) && returned == file, "Unexpected system preview for .\(suffix)")
             case .html(let page, _):
-                try require(!media.contains(suffix) && String(decoding: page, as: UTF8.self).contains("Folio example"),
+                let text = String(decoding: page, as: UTF8.self).replacingOccurrences(
+                    of: #"<span class="syntax [a-z-]+">|</span>"#, with: "", options: .regularExpression
+                )
+                try require(!media.contains(suffix) && text.contains("Folio example"),
                             "Expected readable text for .\(suffix)")
             }
         }
@@ -52,6 +55,15 @@ struct PreviewCheck {
         let markdown = try html("Notes.MDOWN", "\u{FEFF}# 快速查看\n\n- [x] Sample", root: root, resources: resources)
         try require(markdown.contains("<h1 id=") && markdown.contains("快速查看") && !markdown.contains("\u{FEFF}"),
                     "Markdown extensions must have rendered headings with BOM removed.")
+        let code = try html("example.swift", "let count = 42", root: root, resources: resources)
+        try require(code.contains("<span class=\"syntax syntax-keyword\">let</span>"),
+                    "A source document should include highlighted code in Quick Look.")
+        let fenced = try html("Code.md", "```swift\nlet count = 42\n```", root: root, resources: resources)
+        try require(fenced.contains("language-swift") && fenced.contains("syntax-constant"),
+                    "A Markdown code fence should be highlighted in Quick Look.")
+        let editorSpans = try Core.sourceHighlights(for: "example.swift", source: "let face = \"😀\"; let count = 42")
+        try require(editorSpans.contains { $0.token == .constant && $0.start == 29 && $0.end == 31 },
+                    "The native editor should receive color ranges in UTF-16 coordinates.")
         let htmlPage = try html("page.html", "<h1>Safe heading</h1><script>userScript()</script>", root: root, resources: resources)
         try require(htmlPage.contains("Safe heading") && !htmlPage.contains("userScript") && htmlPage.contains("default-src 'none'"),
                     "HTML must be sanitized and use a restrictive policy.")

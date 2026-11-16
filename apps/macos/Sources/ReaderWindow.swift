@@ -231,10 +231,10 @@ struct TabDocument: View {
             case .reading:
                 readingPane
             case .source:
-                SourceEditor(text: $tab.draft)
+                SourceEditor(text: $tab.draft, name: tab.title)
             case .split:
                 ReaderSplit(isSplit: true, minimumPaneWidth: 125) {
-                    SourceEditor(text: $tab.draft)
+                    SourceEditor(text: $tab.draft, name: tab.title)
                 } right: {
                     readingPane
                 }
