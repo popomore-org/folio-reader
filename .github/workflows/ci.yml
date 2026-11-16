@@ -1,6 +1,8 @@
 name: Folio CI
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -9,12 +11,21 @@ concurrency:
   cancel-in-progress: true
 jobs:
   rust:
-    uses: popomore-org/meta/.github/workflows/ci-rust.yml@a3a966614c0ccd31f4b2255808172390266b1d4f
-    with:
-      runs-on: ubuntu-latest
-      execution: serial
-      clippy-args: --locked --workspace --all-targets -- -D warnings
-      test-command: cargo test --locked --workspace && cargo test --locked -p folio-core --no-default-features
+    name: Rust
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: rustup toolchain install --no-self-update
+      - name: Check formatting, lint, and test
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+          cargo test --locked --workspace
+          cargo test --locked -p folio-core --no-default-features
   macos:
     runs-on: xcode-27
     timeout-minutes: 20
@@ -22,6 +33,8 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
@@ -55,8 +68,7 @@ jobs:
     name: CI gate
     needs: [rust, macos]
     if: ${{ !cancelled() }}
-    uses: popomore-org/meta/.github/workflows/ci-gate.yml@a3a966614c0ccd31f4b2255808172390266b1d4f
+    uses: ./.github/workflows/ci-gate.yml
     with:
-      results: ${{ toJSON(needs) }}
-      required-success: '["rust","macos"]'
-      runs-on: ubuntu-latest
+      rust: ${{ needs.rust.result }}
+      macos: ${{ needs.macos.result }}

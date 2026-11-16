@@ -1,0 +1,26 @@
+name: Folio CI gate
+
+on:
+  workflow_call:
+    inputs:
+      rust:
+        required: true
+        type: string
+      macos:
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require Rust and macOS checks to pass
+        env:
+          RUST_RESULT: ${{ inputs.rust }}
+          MACOS_RESULT: ${{ inputs.macos }}
+        run: |
+          test "$RUST_RESULT" = success
+          test "$MACOS_RESULT" = success

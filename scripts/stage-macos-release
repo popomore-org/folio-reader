@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+operation="${1:?Choose inspect or stage}"
+repo="${FOLIO_RELEASE_REPOSITORY:?Set the release repository}"
+tag="${FOLIO_TAG:?Set the release tag}"
+[[ "$repo" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]
+: "${GH_TOKEN:?Set the release token}"
+[[ "$operation" == inspect || "$operation" == stage ]]
+shift
+
+find_release() {
+  gh api --paginate "repos/$repo/releases?per_page=100" |
+    jq -c --arg tag "$tag" '[.[][] | select(.tag_name == $tag)] |
+      if length == 0 then null elif length == 1 then .[0] else error("Multiple releases match the tag") end' --slurp
+}
+release="$(find_release)"
+if [[ "$operation" == inspect ]]; then
+  if [[ "$release" == null ]]; then
+    printf 'draft=false\n'
+  elif jq -e '.draft' <<< "$release" > /dev/null; then
+    printf 'draft=true\n'
+  else
+    printf 'release-id=%s\ndraft=false\n' "$(jq -er '.id' <<< "$release")"
+  fi
+  exit 0
+fi
+
+notes="${1:?Supply release notes}"
+shift
+if [[ "$release" == null ]]; then
+  gh release create "$tag" --repo "$repo" --verify-tag --draft --title "Folio $tag" --notes-file "$notes" >&2
+  release="$(find_release)"
+fi
+id="$(jq -er 'select(.draft == true) | .id' <<< "$release")"
+for file in "$@"; do
+  name="${file##*/}"
+  digest="$(jq -r --arg name "$name" '.assets[] | select(.name == $name) | .digest // "missing digest"' <<< "$release")"
+  if [[ -z "$digest" ]]; then
+    gh release upload "$tag" "$file" --repo "$repo" >&2
+  else
+    test "$digest" = "sha256:$(shasum -a 256 "$file" | cut -d' ' -f1)" || {
+      echo "The staged asset differs from the retained package: $name" >&2
+      exit 1
+    }
+  fi
+done
+printf 'release-id=%s\n' "$id"
