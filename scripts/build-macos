@@ -79,8 +79,10 @@ if mode != "preview":
                 SUEnableAutomaticChecks=False, SUAllowsAutomaticUpdates=False,
                 SUEnableDownloaderService=False, SUScheduledCheckInterval=86400,
                 SUVerifyUpdateBeforeExtraction=True, SURequireSignedFeed=True)
-if mode == "qa":
+if mode in ("qa", "release"):
     info["NSAppTransportSecurity"] = {"NSAllowsLocalNetworking": True}
+if mode == "release":
+    info["FolioPrivateUpdates"] = True
 with open(path, "wb") as file:
     plistlib.dump(info, file)
 with open(extension_path, "rb") as file:

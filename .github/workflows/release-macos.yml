@@ -70,10 +70,10 @@ jobs:
     timeout-minutes: 80
     permissions:
       actions: read
-      contents: read
+      contents: write
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
-      FOLIO_RELEASE_REPOSITORY: ${{ vars.FOLIO_RELEASE_REPOSITORY }}
+      FOLIO_RELEASE_REPOSITORY: ${{ github.repository }}
       FOLIO_VERSION: ${{ needs.source.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -87,25 +87,25 @@ jobs:
           package-manager-cache: false
       - name: Check distribution configuration
         env:
-          GH_TOKEN: ${{ secrets.FOLIO_DISTRIBUTION_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           : "${GH_TOKEN:?Configure the distribution token}"
           [[ "$FOLIO_RELEASE_REPOSITORY" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]
-          test "$FOLIO_RELEASE_REPOSITORY" != "$GITHUB_REPOSITORY"
-          gh api "repos/$FOLIO_RELEASE_REPOSITORY" | jq -e '.private == false'
+          test "$FOLIO_RELEASE_REPOSITORY" = "$GITHUB_REPOSITORY"
+          gh api "repos/$FOLIO_RELEASE_REPOSITORY" | jq -e '.private == true'
       - id: published
         uses: popomore-org/meta/.github/actions/release-assets@a3a966614c0ccd31f4b2255808172390266b1d4f
         with:
           unit: folio
           plan: ${{ needs.source.outputs.plan }}
           repository: ${{ env.FOLIO_RELEASE_REPOSITORY }}
-          token: ${{ secrets.FOLIO_DISTRIBUTION_TOKEN }}
+          token: ${{ github.token }}
           check-existing: true
       - if: fromJSON(steps.published.outputs.target).release_id != null
         name: Resume verified distribution
         env:
-          GH_TOKEN: ${{ secrets.FOLIO_DISTRIBUTION_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ fromJSON(steps.published.outputs.target).release_id }}
         run: |
           set -euo pipefail
@@ -203,7 +203,7 @@ jobs:
           unit: folio
           plan: ${{ needs.source.outputs.plan }}
           repository: ${{ env.FOLIO_RELEASE_REPOSITORY }}
-          token: ${{ secrets.FOLIO_DISTRIBUTION_TOKEN }}
+          token: ${{ github.token }}
           notes-file: .release/notes.txt
           files: '["dist/Folio-${{ env.FOLIO_VERSION }}.zip","dist/Folio-${{ env.FOLIO_VERSION }}.dmg","dist/appcast.xml"]'
           draft-only: true
@@ -212,7 +212,7 @@ jobs:
       - if: fromJSON(steps.published.outputs.target).release_id == null
         name: Verify remote bytes and promote stable channel
         env:
-          GH_TOKEN: ${{ secrets.FOLIO_DISTRIBUTION_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ fromJSON(steps.stage.outputs.target).release_id }}
         run: scripts/publish-macos-channel "$FOLIO_VERSION" "$RELEASE_ID"
       - if: fromJSON(steps.published.outputs.target).release_id == null && always()

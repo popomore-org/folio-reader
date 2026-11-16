@@ -36,6 +36,10 @@ jobs:
           test "$(plutil -extract CFBundleIdentifier raw "$preview")" = org.popomore.folio.preview.quicklook
           test "$(plutil -extract NSExtension.NSExtensionPointIdentifier raw "$preview")" = com.apple.quicklook.preview
           scripts/check-quicklook "$app"
+          xcrun swiftc -swift-version 6 -warnings-as-errors -parse-as-library \
+            apps/macos/Sources/{PrivateUpdateChannel,LocalUpdateFeed}.swift apps/macos/UpdateTests/PrivateUpdateCheck.swift \
+            -o "$RUNNER_TEMP/folio-private-update-check"
+          "$RUNNER_TEMP/folio-private-update-check"
           cli="$app/Contents/Helpers/folio"
           "$cli" --help
           test "$("$cli" --version)" = "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")"

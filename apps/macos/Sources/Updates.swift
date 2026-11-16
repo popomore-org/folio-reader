@@ -25,6 +25,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     @Published private var offer: Offer?
     @Published private(set) var status = "Check for a new version of Folio."
     @Published private(set) var automaticChecks = false
+    @Published private(set) var hasPrivateCredential = false
     @AppStorage("folioAutomaticallyDownload") var automaticDownloads = false
     @AppStorage("folioAutomaticallyInstall") var automaticInstalls = false {
         didSet { restartAfter = nil }
@@ -32,6 +33,12 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
 
     let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     private let feed = (Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String).flatMap { URL(string: $0) }
+    private let privateChannel: PrivateUpdateChannel? = {
+        guard Bundle.main.object(forInfoDictionaryKey: "FolioPrivateUpdates") as? Bool == true,
+              let feed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
+              let url = URL(string: feed), let id = Bundle.main.bundleIdentifier else { return nil }
+        return PrivateUpdateChannel(feed: url, bundleID: id)
+    }()
     private let key = (Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String)
         .flatMap { Data(base64Encoded: $0) }
         .flatMap { try? Curve25519.Signing.PublicKey(rawRepresentation: $0) }
@@ -39,6 +46,11 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     private let transferSession = URLSession(configuration: .ephemeral, delegate: UpdateTransport(), delegateQueue: nil)
     private weak var model: ReaderModel?
     private var updater: SPUUpdater?
+    private var privateSnapshot: PrivateUpdateChannel.Snapshot?
+    private var privateCheck: Task<Void, Never>?
+    private var privateToken: String? {
+        didSet { hasPrivateCredential = privateToken != nil }
+    }
     private var checkCancellation: (() -> Void)?
     private var transfer: URLSessionDownloadTask?
     private var archive: Data?
@@ -54,17 +66,23 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     private var deferredOffer: Offer?
     private var restartAfter: ContinuousClock.Instant?
     private static let consentKey = "folioUpdateConsentRecorded"
+    private static let privateAutomaticKey = "folioPrivateAutomaticChecks"
+    private static let privateLastCheckKey = "folioPrivateLastUpdateCheck"
     private static let maximumArchiveSize = 64 * 1024 * 1024
 
     var isConfigured: Bool { feed != nil && !InstanceMode.isSeparate }
+    var privateRepository: String? { privateChannel?.repository }
+    var releasesURL: URL? { privateChannel?.releasesURL }
+    var canEditPrivateCredential: Bool { !isWorking && updater?.sessionInProgress != true }
     var version: String? { offer?.version }
     var notes: String { offer?.notes ?? "" }
     var canCheck: Bool {
-        updater != nil && authorized == nil && [.idle, .offered, .downloaded, .waiting, .failed].contains(phase)
+        updater != nil && authorized == nil && (privateChannel == nil || hasPrivateCredential) &&
+            [.idle, .offered, .downloaded, .waiting, .failed].contains(phase)
     }
     var canDownload: Bool { phase == .offered || (phase == .failed && offer != nil && archive == nil) }
     var canInstall: Bool { archive != nil && [.downloaded, .waiting, .failed].contains(phase) }
-    var canCancel: Bool { (phase == .checking && checkCancellation != nil) || transfer != nil }
+    var canCancel: Bool { privateCheck != nil || (phase == .checking && checkCancellation != nil) || transfer != nil }
     var canDefer: Bool { canInstall && automaticInstalls && deferredOffer != offer }
     private var isInstalling: Bool { authorized != nil && (phase == .installing || retryTermination != nil || postponeRelaunch != nil) }
     var isWorking: Bool { [.checking, .downloading, .installing].contains(phase) }
@@ -78,16 +96,26 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
         self.model = model
         guard isConfigured, updater == nil else { return }
         let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: self, delegate: self)
+        if let privateChannel {
+            privateToken = privateChannel.token()
+            updater.automaticallyChecksForUpdates = false
+            if !hasPrivateCredential {
+                set(.idle, "Add GitHub access to check for updates.")
+            }
+        }
         do {
             try updater.start()
             self.updater = updater
-            automaticChecks = updater.automaticallyChecksForUpdates
+            automaticChecks = privateChannel == nil ? updater.automaticallyChecksForUpdates : defaults.bool(forKey: Self.privateAutomaticKey)
             Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
                 guard let self else {
                     timer.invalidate()
                     return
                 }
-                MainActor.assumeIsolated { self.installWhenIdle() }
+                MainActor.assumeIsolated {
+                    self.installWhenIdle()
+                    self.checkPrivateUpdatesIfDue()
+                }
             }
         } catch {
             set(.failed, "Couldn’t start the updater. \(error.localizedDescription)")
@@ -95,7 +123,8 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     }
 
     func offerUpdateChecks(on window: NSWindow?) {
-        guard updater != nil, let window, !presentingConsent, !defaults.bool(forKey: Self.consentKey) else { return }
+        guard updater != nil, (privateChannel == nil || hasPrivateCredential), let window,
+              !presentingConsent, !defaults.bool(forKey: Self.consentKey) else { return }
         presentingConsent = true
         let alert = NSAlert()
         alert.messageText = "Check for Folio updates automatically?"
@@ -111,7 +140,11 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     func setAutomaticChecks(_ enabled: Bool) {
         guard let updater else { return }
         automaticChecks = enabled
-        updater.automaticallyChecksForUpdates = enabled
+        if privateChannel != nil {
+            defaults.set(enabled, forKey: Self.privateAutomaticKey)
+        } else {
+            updater.automaticallyChecksForUpdates = enabled
+        }
         defaults.set(true, forKey: Self.consentKey)
     }
 
@@ -121,17 +154,80 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
         check()
     }
 
+    func savePrivateCredential(_ value: String) {
+        guard let privateChannel, canEditPrivateCredential else { return }
+        let token = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            try privateChannel.storeToken(token)
+            clearOffer()
+            privateSnapshot = nil
+            privateToken = token.isEmpty ? nil : token
+            defaults.removeObject(forKey: Self.privateLastCheckKey)
+            set(.idle, token.isEmpty ? "Add GitHub access to check for updates." : "GitHub access saved.")
+        } catch {
+            set(.failed, error.localizedDescription)
+        }
+    }
+
     func check() {
         guard canCheck, updater?.sessionInProgress == false else { return }
+        if privateChannel != nil {
+            checkPrivateUpdates(userInitiated: true)
+            return
+        }
         manualCheck = true
         set(.checking, "Checking for updates…")
         updater?.checkForUpdates()
     }
 
+    private func checkPrivateUpdatesIfDue() {
+        guard privateChannel != nil, automaticChecks, canCheck, updater?.sessionInProgress == false else { return }
+        if let last = defaults.object(forKey: Self.privateLastCheckKey) as? Date,
+           Date().timeIntervalSince(last) < 86400 { return }
+        checkPrivateUpdates(userInitiated: false)
+    }
+
+    private func checkPrivateUpdates(userInitiated: Bool) {
+        guard let privateChannel, let privateToken, privateCheck == nil else { return }
+        defaults.set(Date(), forKey: Self.privateLastCheckKey)
+        set(.checking, "Checking for updates…")
+        privateCheck = Task {
+            defer { privateCheck = nil }
+            do {
+                let snapshot = try await privateChannel.latest(token: privateToken, using: transferSession)
+                try Task.checkCancellation()
+                privateSnapshot = snapshot
+                manualCheck = userInitiated
+                if userInitiated {
+                    updater?.checkForUpdates()
+                } else {
+                    updater?.checkForUpdatesInBackground()
+                }
+            } catch {
+                if Task.isCancelled {
+                    set(.idle, "Check canceled.")
+                } else {
+                    set(.failed, "Couldn’t check for updates. \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    func feedURLString(for updater: SPUUpdater) -> String? {
+        privateSnapshot?.feed.appcast.absoluteString
+    }
+
     func download() {
         guard canDownload, let offer, let key else { return }
+        let request: URLRequest
+        if let privateChannel {
+            guard let privateSnapshot, privateSnapshot.archiveURL == offer.url, let privateToken else { return }
+            request = privateChannel.archiveRequest(privateSnapshot, token: privateToken)
+        } else {
+            request = URLRequest(url: offer.url, cachePolicy: .reloadIgnoringLocalCacheData)
+        }
         set(.downloading, "Downloading Folio \(offer.version)…")
-        let task = transferSession.downloadTask(with: URLRequest(url: offer.url, cachePolicy: .reloadIgnoringLocalCacheData)) { [weak self] file, response, error in
+        let task = transferSession.downloadTask(with: request) { [weak self] file, response, error in
             let result = Result {
                 if let error { throw error }
                 guard let file, let response = response as? HTTPURLResponse, response.statusCode == 200,
@@ -171,7 +267,11 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     }
 
     func cancel() {
-        if let transfer { transfer.cancel() } else {
+        if let privateCheck {
+            privateCheck.cancel()
+        } else if let transfer {
+            transfer.cancel()
+        } else {
             set(.idle, "Check canceled.")
             checkCancellation?()
             checkCancellation = nil
@@ -191,6 +291,10 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
             return
         }
         guard let updater, !updater.sessionInProgress else { return }
+        if privateChannel != nil {
+            guard let privateSnapshot, privateSnapshot.archiveURL == offer.url, let archive else { return }
+            privateSnapshot.feed.setArchive(archive)
+        }
         authorized = offer
         set(.installing, "Preparing to install Folio \(offer.version)…")
         updater.checkForUpdates()
@@ -267,6 +371,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
               let feed,
               qa ? (url.host == "localhost" && url.port == feed.port) :
                   (url.host == "github.com" && url.pathComponents.prefix(3) == feed.pathComponents.prefix(3)),
+              privateChannel == nil || privateSnapshot?.archiveURL == url,
               item.minimumSystemVersion == "14.0", item.hardwareRequirements.contains("arm64"),
               item.contentLength > 0, item.contentLength <= Self.maximumArchiveSize,
               let enclosure = item.propertiesDictionary["enclosure"] as? [String: Any],
@@ -330,7 +435,12 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     }
 
     func updater(_ updater: SPUUpdater, willDownloadUpdate item: SUAppcastItem, with request: NSMutableURLRequest) {
-        guard let url = item.fileURL, let archive, let authorized, offer == authorized else { return }
+        guard let url = item.fileURL, let archive, let authorized,
+              offer == authorized, url == authorized.url else { return }
+        if let privateSnapshot {
+            request.url = privateSnapshot.feed.archive
+            return
+        }
         // Sparkle owns extraction, validation and installation. It can use the verified
         // bytes, or fetch the same signed asset again if CFNetwork has evicted the cache.
         guard let response = HTTPURLResponse(
@@ -399,6 +509,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     func dismissUpdateInstallation() { checkCancellation = nil }
 
     func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: (any Error)?) {
+        privateSnapshot?.feed.setArchive(nil)
         if let cachedRequest {
             URLCache.shared.removeCachedResponse(for: cachedRequest)
             self.cachedRequest = nil
@@ -428,20 +539,5 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
         retryTermination = nil
         postponeRelaunch = nil
         manualCheck = false
-    }
-}
-
-private struct UpdateFailure: LocalizedError {
-    let errorDescription: String?
-    init(_ message: String) { errorDescription = message }
-}
-
-
-private final class UpdateTransport: NSObject, URLSessionTaskDelegate {
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
-        let url = request.url
-        let loopback = task.originalRequest?.url?.host == "localhost" && url?.host == "localhost"
-        completionHandler(url?.scheme == "https" || loopback ? request : nil)
     }
 }

@@ -10,7 +10,7 @@ mode="${3:-promote}"
 id="${2:?Supply the staged release ID}"
 [[ "$id" =~ ^[0-9]+$ ]]
 metadata=$(gh api "$repo")
-jq -e '.private == false' <<< "$metadata" > /dev/null
+jq -e '.private == true' <<< "$metadata" > /dev/null
 
 receipt=$(gh api "$repo/releases/$id")
 jq -e --arg tag "v$version" '.tag_name == $tag and .prerelease == false' <<< "$receipt" > /dev/null
@@ -30,12 +30,12 @@ done
 if jq -e '.draft == true' <<< "$receipt" > /dev/null; then
   gh api "$repo/releases/$id" --method PATCH -F draft=false -f make_latest=false --jq .html_url
 fi
-gh api "$repo/releases/$id" | jq -e '.draft == false and .immutable == true' > /dev/null
+published=$(gh api "$repo/releases/$id")
+jq -e '.draft == false and .immutable == true' <<< "$published" > /dev/null
 for name in "Folio-$version.zip" "Folio-$version.dmg" appcast.xml; do
-  curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
-    --proto '=https' --proto-redir '=https' \
-    "https://github.com/$FOLIO_RELEASE_REPOSITORY/releases/download/v$version/$name" -o "$verification/public"
-  cmp "$verification/$name" "$verification/public"
+  asset_id=$(jq -er --arg name "$name" '.assets[] | select(.name == $name).id' <<< "$published")
+  gh api "$repo/releases/assets/$asset_id" -H 'Accept: application/octet-stream' > "$verification/download"
+  cmp "$verification/$name" "$verification/download"
 done
 if latest=$(gh api "$repo/releases/latest" 2>&1); then
   latest_version=$(jq -er '.tag_name | select(startswith("v")) | ltrimstr("v")' <<< "$latest")
@@ -57,7 +57,8 @@ elif [[ "$latest" != *"HTTP 404"* ]]; then
   exit 1
 fi
 gh api "$repo/releases/$id" --method PATCH -f make_latest=true --jq .html_url
-curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
-  --proto '=https' --proto-redir '=https' \
-  "https://github.com/$FOLIO_RELEASE_REPOSITORY/releases/latest/download/appcast.xml" -o "$verification/latest.xml"
+latest=$(gh api "$repo/releases/latest")
+jq -e --argjson id "$id" '.id == $id and .immutable == true' <<< "$latest" > /dev/null
+asset_id=$(jq -er '.assets[] | select(.name == "appcast.xml").id' <<< "$latest")
+gh api "$repo/releases/assets/$asset_id" -H 'Accept: application/octet-stream' > "$verification/latest.xml"
 cmp "$verification/appcast.xml" "$verification/latest.xml"

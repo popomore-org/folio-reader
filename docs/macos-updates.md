@@ -10,16 +10,17 @@ Folio 将已验签的下载暂存在本次运行内。确认安装，或事先�
 
 ## 正式分发
 
-`folio-macos-release` 环境使用独立的 GitHub 下载仓库。将 `FOLIO_RELEASE_REPOSITORY` 设为组织批准的公共分发仓库，并在该仓库启用不可变 Releases。将 `FOLIO_UPDATE_PUBLIC_KEY` 设为稳定渠道的 Ed25519 公钥。私有源码的发行说明使用明确准备的 `.release/notes.txt`。每次发布前更新 Notes 和 `.release/units/folio.json` 中的版本。在 Meta 验证的 main 提交上创建并推送手动 `vX.Y.Z` 标签。手动运行 workflow 只会验源和生成本地 QA 包。
+首版发布在私有源码仓库的 GitHub Releases。需要仓库读取权限才能下载。启用不可变 Releases。发布任务使用该任务自身的 `GITHUB_TOKEN`，在 `folio-macos-release` 环境中配置稳定渠道的 `FOLIO_UPDATE_PUBLIC_KEY` 和下表的签名凭据。每次发布前更新 `.release/notes.txt` 和 `.release/units/folio.json` 中的版本。在 Meta 验证的 main 提交上创建并推送手动 `vX.Y.Z` 标签。手动运行 workflow 只会验源和生成本地 QA 包。
+
+首次安装从登录 GitHub 后可见的 Releases 下载 DMG。要在应用里检查更新，到 **Settings → Updates → GitHub Access** 保存仅对此仓库有 **Contents: Read** 权限的细粒度 GitHub token。Folio 将它保存在 macOS Keychain，并只发给 GitHub API。Folio 下载签名的 appcast 和归档，再交给 Sparkle 核验和安装。
 
 | 环境密钥 | 用途 |
 | --- | --- |
-| `FOLIO_DISTRIBUTION_TOKEN` | 分发仓库的 Contents 写权限 |
 | `FOLIO_APPLE_CERTIFICATE`、`FOLIO_APPLE_CERTIFICATE_PASSWORD` | base64 编码的 Developer ID Application PKCS#12 证书及密码 |
 | `FOLIO_APPLE_NOTARY_KEY`、`FOLIO_APPLE_NOTARY_KEY_ID`、`FOLIO_APPLE_NOTARY_ISSUER` | Apple 公证凭据 |
 | `FOLIO_UPDATE_PRIVATE_KEY` | 稳定渠道 Sparkle Ed25519 私钥种子 |
 
-任务签名并公证应用和 DMG、装订公证票据，再生成单独签名的 ZIP 和 appcast。Meta 发布动作将固定版本资产上传至草稿。任务回读验证每个资产后将已核查的版本更新为 latest，再从实际公开 URL 回读验证。首次交付通过已公证的 DMG，后续从 ZIP 更新。
+任务签名并公证应用和 DMG、装订公证票据，再生成单独签名的 ZIP 和 appcast。Meta 发布动作将固定版本资产上传至草稿。任务回读验证每个资产后将已核查的版本更新为 latest，再从实际经授权的下载入口 回读验证。首次交付通过已公证的 DMG，后续从 ZIP 更新。
 
 发布中断后，在 GitHub Actions 重跑原 workflow run。上传草稿前，任务已将签名后的 ZIP、DMG 和 appcast 保存为该 run 的 `folio-signed-packages`。重跑会下载同一份文件，按 Meta 校验续传缺失的资产。若草稿不完整且原制品已过期或丢失，流程会停止，需要先找回原制品再继续。
 

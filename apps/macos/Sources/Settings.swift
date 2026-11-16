@@ -76,9 +76,30 @@ struct ReaderSettings: View {
 
 private struct UpdateSettings: View {
     @ObservedObject var updates: FolioUpdates
+    @State private var githubToken = ""
 
     var body: some View {
         Form {
+            if updates.isConfigured, let repository = updates.privateRepository {
+                Section("GitHub Access") {
+                    LabeledContent("Repository", value: repository)
+                    SecureField("GitHub access token", text: $githubToken)
+                    HStack {
+                        Button("Save Token") {
+                            updates.savePrivateCredential(githubToken)
+                            githubToken = ""
+                        }
+                        .disabled(githubToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        if updates.hasPrivateCredential {
+                            Button("Remove Token") { updates.savePrivateCredential("") }
+                        }
+                    }
+                    .disabled(!updates.canEditPrivateCredential)
+                    Text("Use a read-only token with Contents access to this repository. Folio saves it in the macOS Keychain.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    if let releases = updates.releasesURL { Link("Open Releases", destination: releases) }
+                }
+            }
             Section("Software Update") {
                 LabeledContent("Installed version", value: updates.currentVersion)
                 if updates.isConfigured {
