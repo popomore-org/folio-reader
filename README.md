@@ -83,7 +83,7 @@ The caller grants access to a workspace and decides how to present its files. Th
 
 Open an [issue](https://github.com/popomore-org/folio-reader/issues) for a bug or feature request. Include your macOS version, Folio version, and a sample file you can share when the issue depends on specific file content. Send changes through pull requests. Use English for commit messages and pull request titles and descriptions. [Contributor instructions](AGENTS.md)
 
-[Reader design and references (中文)](docs/reader-design.md) · [macOS release and update guide](docs/macos-updates.md)
+[macOS release and update guide](docs/macos-updates.md)
 
 ## License
 
