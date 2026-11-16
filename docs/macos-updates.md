@@ -1,6 +1,6 @@
 # macOS releases and updates
 
-Folio checks the signed Sparkle appcast in [GitHub Releases](https://github.com/popomore-org/folio-reader/releases). Stable builds can check automatically at startup and every 24 hours while running. Use **Settings → Updates** or **Check for Updates…** in the Folio menu to check manually.
+Folio checks the signed Sparkle appcast in [GitHub Releases](https://github.com/popomore/folio-reader/releases). Stable builds can check automatically at startup and every 24 hours while running. Use **Settings → Updates** or **Check for Updates…** in the Folio menu to check manually.
 
 Folio verifies the download before handing it to Sparkle. Workspaces and preferences live outside the app bundle. Open documents and native media playback can delay a restart.
 

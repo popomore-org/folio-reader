@@ -1,4 +1,8 @@
-# Folio
+<p align="center">
+  <img src="assets/folio.png" width="112" height="112" alt="Folio app icon">
+</p>
+
+<h1 align="center">Folio</h1>
 
 Folio is an open-source macOS reader for local project files. Browse saved folders, read documents side by side, and make small edits without leaving the workspace. The Rust core can also be embedded in other applications.
 
@@ -12,7 +16,7 @@ Folio is an open-source macOS reader for local project files. Browse saved folde
 
 ## Install
 
-Folio builds for Apple Silicon and requires macOS 14 or later. Download a build from [GitHub Releases](https://github.com/popomore-org/folio-reader/releases), open the DMG, and drag the app to Applications. Releases marked **Pre-release** are preview builds.
+Folio builds for Apple Silicon and requires macOS 14 or later. Download a build from [GitHub Releases](https://github.com/popomore/folio-reader/releases), open the DMG, and drag the app to Applications. Releases marked **Pre-release** are preview builds.
 
 Open Folio once to register its Finder extension. Manage it under **System Settings → General → Login Items & Extensions → Quick Look**. macOS chooses the provider when multiple apps support the same file type.
 
@@ -81,7 +85,7 @@ The caller grants access to a workspace and decides how to present its files. Th
 
 ## Contribute
 
-Open an [issue](https://github.com/popomore-org/folio-reader/issues) for a bug or feature request. Include your macOS version, Folio version, and a sample file you can share when the issue depends on specific file content. Send changes through pull requests. Use English for commit messages and pull request titles and descriptions. [Contributor instructions](AGENTS.md)
+Open an [issue](https://github.com/popomore/folio-reader/issues) for a bug or feature request. Include your macOS version, Folio version, and a sample file you can share when the issue depends on specific file content. Send changes through pull requests. Use English for commit messages and pull request titles and descriptions. [Contributor instructions](AGENTS.md)
 
 [macOS release and update guide](docs/macos-updates.md)
 
