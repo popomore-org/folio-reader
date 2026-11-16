@@ -8,6 +8,13 @@ Folio verifies the download before handing it to Sparkle. Workspaces and prefere
 
 Run `scripts/prepare-update-qa` and use the directory printed on the last line. Serve its `server` subdirectory on loopback with `python3 -m http.server 18736 --bind 127.0.0.1 --directory "$qa/server"`. Open `"$qa/installed/Folio Update QA.app"` and its `Fixture.md`. Check for, download, and install the update from Settings. The local builds use a separate bundle identity and a temporary Sparkle key.
 
+## Release notes
+
+Write release notes in English. The release workflow uses `.release/notes.txt`
+for stable releases and `.release/preview-notes.txt` for previews. The selected
+file supplies both the GitHub Release description and the notes embedded in the
+signed Sparkle appcast. Update the relevant file before creating a release.
+
 ## Publish a stable release
 
 1. Use a clean checkout of `origin/main` with passing Folio CI. Update `.release/notes.txt` for the release.
