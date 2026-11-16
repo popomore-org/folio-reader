@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import PDFKit
 import UniformTypeIdentifiers
+import WebKit
 
 @main
 struct PreviewCheck {
@@ -67,6 +68,10 @@ struct PreviewCheck {
         try require(fenced.contains("language-swift") && fenced.contains("syntax-constant") &&
                     fenced.components(separatedBy: number).count == 2,
                     "A Markdown code fence should be highlighted and numbered in Quick Look.")
+        var numberedLines = (1...101).map { "let value_\($0) = \($0);" }
+        numberedLines[11] = "let long = \"" + String(repeating: "x", count: 180) + "\";"
+        let numberedPage = try html("LineNumbers.rs", numberedLines.joined(separator: "\n"), root: root, resources: resources)
+        try await LineNumberLayoutCheck.verify(numberedPage)
         let editorSpans = try Core.sourceHighlights(for: "example.swift", source: "let face = \"😀\"; let count = 42")
         try require(editorSpans.contains { $0.token == .constant && $0.start == 29 && $0.end == 31 },
                     "The native editor should receive color ranges in UTF-16 coordinates.")
@@ -122,5 +127,68 @@ struct PreviewCheck {
 
     private static func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
         if !condition() { throw CoreError(message: message) }
+    }
+}
+
+@MainActor
+private final class LineNumberLayoutCheck: NSObject, WKNavigationDelegate {
+    private var loading: CheckedContinuation<Void, any Error>?
+
+    static func verify(_ page: String) async throws {
+        _ = NSApplication.shared
+        let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 360, height: 400))
+        let navigation = LineNumberLayoutCheck()
+        web.navigationDelegate = navigation
+        try await withCheckedThrowingContinuation { continuation in
+            navigation.loading = continuation
+            if web.loadHTMLString(page, baseURL: nil) == nil {
+                navigation.finish(CoreError(message: "Could not load line numbers in WebKit."))
+            }
+        }
+        let result = try await web.evaluateJavaScript("""
+            (() => {
+                const markers = [...document.querySelectorAll("pre > code > .code-line-number")];
+                if (markers.length !== 101) return "Expected 101 line numbers, got " + markers.length;
+                const digitWidth = parseFloat(getComputedStyle(markers[0], "::before").width);
+                for (const index of [0, 9, 99]) {
+                    const style = getComputedStyle(markers[index], "::before");
+                    const expectedWidth = digitWidth * String(index + 1).length;
+                    if (!(Math.abs(parseFloat(style.height) - parseFloat(style.lineHeight)) <= 0.5
+                          && Math.abs(parseFloat(style.width) - expectedWidth) <= 0.5)) {
+                        return "Line number " + (index + 1) + " wrapped (box height " + style.height
+                            + ", line height " + style.lineHeight + ").";
+                    }
+                }
+                const top = (index) => markers[index].getBoundingClientRect().top;
+                if (!(top(12) - top(11) > (top(1) - top(0)) * 1.5)) {
+                    return "The long source line should still wrap in a narrow preview.";
+                }
+                return "";
+            })()
+            """)
+        guard let failure = result as? String, failure.isEmpty else {
+            throw CoreError(message: (result as? String) ?? "Could not measure line number layout.")
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { finish(nil) }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+        finish(error)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
+        finish(error)
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        finish(CoreError(message: "The line number preview renderer exited."))
+    }
+
+    private func finish(_ error: (any Error)?) {
+        guard let continuation = loading else { return }
+        loading = nil
+        if let error { continuation.resume(throwing: error) }
+        else { continuation.resume() }
     }
 }

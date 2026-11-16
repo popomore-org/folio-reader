@@ -98,6 +98,7 @@ pre:has(> code > .code-line-number) { counter-reset: code-line; padding-inline-s
   position: absolute;
   inset-inline-end: 1.45ch;
   inset-block-end: -.18em;
+  white-space: nowrap;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   line-height: 1;
