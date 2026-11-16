@@ -29,15 +29,18 @@ fi
 notes="${1:?Supply release notes}"
 shift
 if [[ "$release" == null ]]; then
-  gh release create "$tag" --repo "$repo" --verify-tag --draft --title "Folio $tag" --notes-file "$notes" >&2
-  release="$(find_release)"
+  gh api --silent "repos/$repo/git/ref/tags/$tag"
+  # The release list can lag behind creation. Use the draft returned by the API.
+  release=$(gh api "repos/$repo/releases" --method POST \
+    -f tag_name="$tag" -f name="Folio $tag" -F draft=true -F "body=@$notes")
 fi
-id="$(jq -er 'select(.draft == true) | .id' <<< "$release")"
+id="$(jq -er 'select(.draft == true) | .id | select(type == "number" and . > 0)' <<< "$release")"
 for file in "$@"; do
   name="${file##*/}"
   digest="$(jq -r --arg name "$name" '.assets[] | select(.name == $name) | .digest // "missing digest"' <<< "$release")"
   if [[ -z "$digest" ]]; then
-    gh release upload "$tag" "$file" --repo "$repo" >&2
+    gh api "https://uploads.github.com/repos/$repo/releases/$id/assets" --method POST \
+      -f name="$name" --input "$file" -H "Content-Type: application/octet-stream" --silent
   else
     test "$digest" = "sha256:$(shasum -a 256 "$file" | cut -d' ' -f1)" || {
       echo "The staged asset differs from the retained package: $name" >&2
