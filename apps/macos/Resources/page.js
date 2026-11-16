@@ -1,9 +1,10 @@
-window.folioAppearance = (scheme, size, width, serif) => {
+window.folioAppearance = (scheme, size, width, serif, colors) => {
   const root = document.documentElement;
   const schemeChanged = root.dataset.colorScheme !== scheme;
   root.dataset.colorScheme = scheme;
   root.style.setProperty("--text-size", `${size}px`);
   root.style.setProperty("--reading-width", `${width}px`);
+  for (const [name, value] of Object.entries(colors)) root.style.setProperty(name, value);
   root.dataset.serif = String(serif);
   if (schemeChanged) window.dispatchEvent(new Event("folio-color-scheme"));
 };

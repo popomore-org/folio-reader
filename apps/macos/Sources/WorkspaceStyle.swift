@@ -1,32 +1,33 @@
 import AppKit
 import SwiftUI
 
+@MainActor
 enum WorkspaceStyle {
     static let navigationTextSize: CGFloat = 13
     static let detailTextSize: CGFloat = 12
 
-    static let surface = adaptive(0xF3F5F8, 0x1D2129)
-    static let line = adaptive(0xD9DEE6, 0x353D4B)
-    static let selection = adaptive(0xDFE6F0, 0x303B4C)
-    static let hover = adaptive(0xE8ECF2, 0x282F3C)
-    static let focus = adaptive(0x44669B, 0x9CB7EE)
+    static var surface: Color { adaptive("surface", fallback: .controlBackgroundColor) }
+    static var line: Color { adaptive("line", fallback: .separatorColor) }
+    static var selection: Color { adaptive("selection", fallback: .selectedContentBackgroundColor) }
+    static var hover: Color { adaptive("hover", fallback: .quaternaryLabelColor) }
+    static var focus: Color { adaptive("focus", fallback: .controlAccentColor) }
+    static var secondaryText: Color { adaptive("secondary-text", fallback: .secondaryLabelColor) }
 
-    static let secondaryText = adaptive(srgb(0x646D79), .secondaryLabelColor)
-
-    private static func adaptive(_ light: UInt32, _ dark: UInt32) -> Color {
-        adaptive(srgb(light), srgb(dark))
-    }
-
-    private static func adaptive(_ light: NSColor, _ dark: NSColor) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
+    private static func adaptive(_ key: String, fallback: NSColor) -> Color {
+        let light = ThemeStore.shared[.light]["workspace"][key]?.nsColor ?? fallback
+        let dark = ThemeStore.shared[.dark]["workspace"][key]?.nsColor ?? fallback
+        return Color(nsColor: NSColor(name: nil) { appearance in
             appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
         })
     }
+}
 
-    static func srgb(_ value: UInt32) -> NSColor {
-        NSColor(srgbRed: CGFloat((value >> 16) & 255) / 255,
-                green: CGFloat((value >> 8) & 255) / 255,
-                blue: CGFloat(value & 255) / 255, alpha: 1)
+extension ThemeColor {
+    var nsColor: NSColor {
+        NSColor(srgbRed: CGFloat((rgba >> 24) & 255) / 255,
+                green: CGFloat((rgba >> 16) & 255) / 255,
+                blue: CGFloat((rgba >> 8) & 255) / 255,
+                alpha: CGFloat(rgba & 255) / 255)
     }
 }
 

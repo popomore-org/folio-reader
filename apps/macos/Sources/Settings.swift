@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum WorkspaceAppearance: String, CaseIterable, Identifiable {
@@ -70,6 +71,7 @@ struct ReaderSettings: View {
     @ObservedObject var model: ReaderModel
     @ObservedObject var updates: FolioUpdates
     @ObservedObject var navigation: SettingsNavigation
+    @State private var themeMessage: String?
 
     var body: some View {
         TabView(selection: $navigation.page) {
@@ -104,8 +106,34 @@ struct ReaderSettings: View {
                     Text("Wide").tag(920.0)
                 }
             }
+            Section("Themes") {
+                HStack {
+                    Button("Open Theme Folder", action: openThemeFolder)
+                    Button("Reload Themes") {
+                        ThemeStore.shared.reload()
+                        themeMessage = ThemeStore.shared.problems.isEmpty ? "Themes reloaded." : nil
+                    }
+                }
+                Text("Edit light.json or dark.json, then reload. Finder uses the bundled themes.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                if let themeMessage { Text(themeMessage).font(.callout) }
+                ForEach(ThemeStore.shared.problems, id: \.self) { problem in
+                    Text(problem).font(.callout).foregroundStyle(.red)
+                }
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private func openThemeFolder() {
+        let themes = ThemeStore.shared
+        do {
+            try themes.prepareDirectory()
+            themeMessage = NSWorkspace.shared.open(themes.directory) ? nil : "Could not open the theme folder."
+        } catch {
+            themeMessage = error.localizedDescription
+        }
     }
 }
 

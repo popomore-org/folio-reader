@@ -37,6 +37,12 @@ DOCX 和 EPUB 目前可从未知格式提示打开系统默认应用。目录默
 
 源码编辑参考本机 Zed 的字体、行距和 Catppuccin 配色，优先使用本机 JetBrains Mono。阅读采用 GitHub Primer 排版和语法颜色，新配置默认使用 16 点无衬线字体。两种视图都随外观切换浅色和深色。参考来源见 [阅读器设计](docs/reader-design.md)。
 
+### 自定义主题
+
+在 **Settings → Appearance → Themes** 点 **Open Theme Folder**。Folio 会创建可编辑的 `light.json` 和 `dark.json`，已有文件会保留。修改后点 **Reload Themes**，当前打开的工作区和 Folio 预览小窗会更新配色。Finder 快速查看使用随应用附带的默认配色。
+
+主题可设置工作区（`workspace`）、源码编辑器（`editor` 和 `editor-syntax`）以及阅读区（`reader` 和 `reader-syntax`）。颜色支持 `#RRGGBB` 和 `#RRGGBBAA`，省略的字段沿用默认值。完整字段见内置的 [light.json](apps/macos/Themes/light.json) 和 [dark.json](apps/macos/Themes/dark.json)。设置会显示无法读取的文件，并保留最后一次有效的配色。删除自定义文件后重新加载即可恢复该外观的默认配色。
+
 ## 构建与验证
 
 构建需要 Apple Silicon Mac、Xcode 27.2、Rust 1.97.0、Node 26.13.0。使用 `rust-toolchain.toml`、`.node-version` 和两个锁文件。

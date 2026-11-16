@@ -266,7 +266,10 @@ struct TabDocument: View {
     let appearance: Appearance
     let setMediaActivity: (UUID, Bool) -> Void
     let follow: (URL) -> Void
+    @Environment(\.colorScheme) private var colorScheme
     @FocusState private var findFocus: Bool
+
+    private var theme: FolioTheme { ThemeStore.shared[colorScheme == .dark ? .dark : .light] }
 
     var body: some View {
         Group {
@@ -274,10 +277,10 @@ struct TabDocument: View {
             case .reading:
                 readingPane
             case .source:
-                SourceEditor(text: $tab.draft, name: tab.title)
+                SourceEditor(text: $tab.draft, name: tab.title, theme: theme)
             case .split:
                 ReaderSplit(isSplit: true, style: .sourcePreview) {
-                    SourceEditor(text: $tab.draft, name: tab.title)
+                    SourceEditor(text: $tab.draft, name: tab.title, theme: theme)
                 } right: {
                     readingPane
                 }
@@ -327,7 +330,7 @@ struct TabDocument: View {
         } else if let document = tab.document, let file = tab.location.url {
             if let preview = tab.preview {
                 ReaderWeb(tab: tab, follow: follow, root: tab.location.root, path: tab.location.path,
-                          html: preview.html, appearance: appearance)
+                          html: preview.html, appearance: appearance, theme: theme)
             } else {
                 NativePreview(file: file, kind: document.kind, bytes: document.bytes,
                               playbackChanged: { setMediaActivity(tab.id, $0) })

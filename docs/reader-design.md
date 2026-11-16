@@ -41,7 +41,7 @@ VS Code 的文件图标主题将文件名、扩展名和语言 ID 映射到图�
 
 - Typora 的主题属于基于自身 DOM 约定的 CSS，Obsidian 的主题也依赖应用暴露的变量和选择器。可以参考作品的排版参数，套用完整 CSS 时仍依赖目标产品的 DOM。[Typora 主题文档](https://theme.typora.io/doc/) · [Obsidian 外观](https://obsidian.md/help/appearance)
 - VS Code 的 JSON 色彩与 TextMate scope 适合借鉴源码配色的语义角色，正文、页面宽度和中文字体仍需单独定义。[VS Code Color Theme](https://code.visualstudio.com/api/extension-guides/color-theme)
-- EPUB Reading Systems 建议书籍内容渲染的 CSS 行为。DTCG 2025.10 可作为跨工具交换颜色与排版 token 的格式。调研这些标准后，本仓用 CSS 变量记录颜色角色、字体、字号、行高与栏宽。[EPUB Reading Systems 3.3](https://www.w3.org/TR/epub-rs-33/) · [DTCG 格式](https://www.designtokens.org/tr/2025.10/format/)
+- EPUB Reading Systems 建议书籍内容渲染的 CSS 行为。DTCG 2025.10 可作为跨工具交换颜色与排版 token 的格式。Folio 的浅色和深色 JSON 按工作区、编辑区和阅读区定义颜色，阅读区将颜色映射到 CSS 变量。字体、字号和栏宽沿用阅读设置。[EPUB Reading Systems 3.3](https://www.w3.org/TR/epub-rs-33/) · [DTCG 格式](https://www.designtokens.org/tr/2025.10/format/)
 
 ## 实现边界
 

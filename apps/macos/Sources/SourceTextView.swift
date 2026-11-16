@@ -1,16 +1,15 @@
 import AppKit
 
 struct SourceEditorStyle {
-    let dark: Bool
+    let theme: FolioTheme
 
-    // Zed's Catppuccin Latte and Macchiato, with darker light-mode ink for small text.
-    var background: NSColor { color(0xEFF1F5, 0x24273A) }
-    var foreground: NSColor { color(0x4C4F69, 0xCAD3F5) }
-    var lineNumber: NSColor { color(0x686C83, 0x8087A2) }
-    var activeLineNumber: NSColor { color(0x7526CE, 0xC6A0F6) }
-    var activeLine: NSColor { foreground.withAlphaComponent(0.07) }
-    var cursor: NSColor { color(0xA25242, 0xF4DBD6) }
-    var selection: NSColor { color(0x7C7F93, 0x939AB7).withAlphaComponent(dark ? 0.25 : 0.30) }
+    var background: NSColor { color("background", fallback: .textBackgroundColor) }
+    var foreground: NSColor { color("foreground", fallback: .textColor) }
+    var lineNumber: NSColor { color("line-number", fallback: .secondaryLabelColor) }
+    var activeLineNumber: NSColor { color("active-line-number", fallback: .controlAccentColor) }
+    var activeLine: NSColor { color("active-line", fallback: .quaternaryLabelColor) }
+    var cursor: NSColor { color("cursor", fallback: .textColor) }
+    var selection: NSColor { color("selection", fallback: .selectedTextBackgroundColor) }
 
     static func font(size: CGFloat) -> NSFont {
         NSFont(name: "JetBrainsMonoNF-Regular", size: size)
@@ -19,25 +18,17 @@ struct SourceEditorStyle {
     }
 
     func color(for token: SourceHighlight.Token) -> NSColor {
-        switch token {
-        case .comment: color(0x62667F, 0x939AB7)
-        case .keyword: color(0x7526CE, 0xC6A0F6)
-        case .string, .added: color(0x2D7323, 0xA6DA95)
-        case .constant: color(0xA24412, 0xF5A97F)
-        case .type: color(0x855711, 0xEED49F)
-        case .function, .tag: color(0x1B53C2, 0x8AADF4)
-        case .removed: color(0xD20F39, 0xED8796)
-        }
+        theme["editor-syntax"][token.rawValue]?.nsColor ?? foreground
     }
 
-    private func color(_ light: UInt32, _ dark: UInt32) -> NSColor {
-        WorkspaceStyle.srgb(self.dark ? dark : light)
+    private func color(_ key: String, fallback: NSColor) -> NSColor {
+        theme["editor"][key]?.nsColor ?? fallback
     }
 }
 
 @MainActor
 final class SourceTextView: NSTextView {
-    private(set) var style = SourceEditorStyle(dark: false)
+    private(set) var style = SourceEditorStyle(theme: .system)
 
     var activeLineStart: Int? {
         guard let caret else { return nil }
@@ -51,8 +42,8 @@ final class SourceTextView: NSTextView {
         return selection.location
     }
 
-    func applyStyle(dark: Bool) {
-        style = SourceEditorStyle(dark: dark)
+    func applyStyle(_ theme: FolioTheme) {
+        style = SourceEditorStyle(theme: theme)
         backgroundColor = style.background
         enclosingScrollView?.backgroundColor = style.background
         textColor = style.foreground

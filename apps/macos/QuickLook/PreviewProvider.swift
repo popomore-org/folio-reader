@@ -71,6 +71,8 @@ final class PreviewProvider: QLPreviewProvider, QLPreviewingController {
             throw CoreError(message: "The preview stylesheet is missing.")
         }
         let style = try String(contentsOf: styleURL, encoding: .utf8)
+        let light = try FolioTheme.read(FolioTheme.bundledURL(for: .light, in: resources))
+        let dark = try FolioTheme.read(FolioTheme.bundledURL(for: .dark, in: resources))
         let page = Data("""
             <!doctype html>
             <html>
@@ -80,6 +82,8 @@ final class PreviewProvider: QLPreviewProvider, QLPreviewingController {
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
             <style>
             \(style)
+            :root { \(light.readerDeclarations) }
+            @media (prefers-color-scheme: dark) { :root { \(dark.readerDeclarations) } }
             article { padding-block-end: 46px; }
             </style>
             </head>

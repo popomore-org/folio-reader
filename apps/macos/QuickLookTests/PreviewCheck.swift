@@ -25,6 +25,7 @@ struct PreviewCheck {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("folio-quicklook-\(UUID())", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: root) }
+        try verifyThemes(app: app, resources: resources, root: root)
 
         let native = "rtf pdf png jpeg jpg gif webp heic tif tiff bmp avif svg mp3 m4a aac wav aiff caf flac mp4 m4v mov"
         let text = "md markdown mdown mkd html htm csv tsv mmd mermaid vl txt text log json jsonl yaml yml xml toml ini conf rs swift c h cpp hpp py js ts jsx tsx go java kt sh zsh sql css scss diff patch lua rb php cs dart zig fish vue svelte m mm cxx hxx"
@@ -56,6 +57,8 @@ struct PreviewCheck {
         let markdown = try html("Notes.MDOWN", "\u{FEFF}# 快速查看\n\n- [x] Sample", root: root, resources: resources)
         try require(markdown.contains("<h1 id=") && markdown.contains("快速查看") && !markdown.contains("\u{FEFF}"),
                     "Markdown extensions must have rendered headings with BOM removed.")
+        try require(markdown.contains("--paper:#ffffff;") && markdown.contains("--paper:#0d1117;"),
+                    "Quick Look should render the bundled light and dark colors.")
         let lua = try html("module.lua", "local count = 42", root: root, resources: resources)
         try require(lua.contains("syntax-keyword") && lua.contains("syntax-constant"),
                     "A Lua source file should be recognized and highlighted in Quick Look.")
@@ -127,7 +130,47 @@ struct PreviewCheck {
                 try require(PDFDocument(data: data)?.pageCount == 1, "Expected a chart PDF for \(name).")
             }
         }
-        print("Verified \(suffixes.count) suffixes, Quick Look bundle names, preview routing and text rendering.")
+        print("Verified \(suffixes.count) suffixes, Quick Look bundle names, preview routing, text rendering and themes.")
+    }
+
+    @MainActor
+    private static func verifyThemes(app: Bundle, resources: Bundle, root: URL) throws {
+        let directory = root.appendingPathComponent("Themes", isDirectory: true)
+        let store = ThemeStore(bundle: app, directory: directory)
+        let originalLight = store[.light]
+        let originalDark = store[.dark]
+        try require(store.problems.isEmpty && originalLight["reader"]["paper"]?.hex == "#ffffff",
+                    "A missing theme folder must use the bundled palette without an error.")
+        for mode in ThemeMode.allCases {
+            let quickLookTheme = try FolioTheme.read(FolioTheme.bundledURL(for: mode, in: resources))
+            try require(quickLookTheme == store[mode], "The app and Quick Look must bundle identical defaults.")
+        }
+        try store.prepareDirectory()
+        for mode in ThemeMode.allCases {
+            let seeded = try FolioTheme.read(directory.appendingPathComponent(mode.filename))
+            try require(seeded == store[mode], "Opening the theme folder should seed both editable files.")
+        }
+        let file = directory.appendingPathComponent(ThemeMode.light.filename)
+        let custom = ##"{"reader":{"paper":"#123ABC"},"editor-syntax":{"keyword":"#AB560180"}}"##
+        try Data(custom.utf8).write(to: file, options: .atomic)
+        try store.prepareDirectory()
+        store.reload()
+        let customized = store[.light]
+        try require(store.problems.isEmpty && customized.readerVariables["--paper"] == "#123abc" &&
+                    customized["reader"]["ink"] == originalLight["reader"]["ink"] &&
+                    customized["editor-syntax"]["keyword"]?.rgba == 0xab560180 && store[.dark] == originalDark,
+                    "A partial override should survive reopening the folder, inherit defaults and leave the other mode intact.")
+        for invalid in [#"{"reader":{"paper":"tomato"}}"#, ##"{"reader":{"typo":"#123456"}}"##] {
+            try Data(invalid.utf8).write(to: file, options: .atomic)
+            store.reload()
+            try require(store.problems.first?.hasPrefix("light.json") == true &&
+                        store[.light] == customized && store[.dark] == originalDark,
+                        "Invalid theme files should report an error and preserve the last valid palette.")
+        }
+        try FileManager.default.removeItem(at: file)
+        store.reload()
+        try require(store.problems.isEmpty && store[.light] == originalLight,
+                    "Removing an override should restore the bundled palette.")
     }
 
     private static func html(_ name: String, _ source: String, root: URL, resources: Bundle) throws -> String {

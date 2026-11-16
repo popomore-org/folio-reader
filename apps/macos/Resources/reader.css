@@ -1,14 +1,6 @@
 /* GitHub Primer Markdown typography and Prettylights colors. */
 :root {
   color-scheme: light dark;
-  --paper: #ffffff;
-  --ink: #1f2328;
-  --muted: #59636e;
-  --line: #d1d9e0;
-  --line-muted: #d1d9e0b3;
-  --inset: #f6f8fa;
-  --inline-code: #818b981f;
-  --link: #0969da;
   --text-size: 16px;
   --reading-width: 700px;
   --reader-gutter: clamp(14px, 4vw, 32px);
@@ -19,33 +11,11 @@
 :root[data-serif="true"] { --body-font: "New York", "Songti SC", Georgia, serif; }
 :root[data-color-scheme="light"] { color-scheme: light; }
 
-:root[data-color-scheme="dark"] {
-  color-scheme: dark;
-  --paper: #0d1117;
-  --ink: #f0f6fc;
-  --muted: #9198a1;
-  --line: #3d444d;
-  --line-muted: #3d444db3;
-  --inset: #151b23;
-  --inline-code: #656c7633;
-  --link: #4493f8;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-color-scheme]) {
-    --paper: #0d1117;
-    --ink: #f0f6fc;
-    --muted: #9198a1;
-    --line: #3d444d;
-    --line-muted: #3d444db3;
-    --inset: #151b23;
-    --inline-code: #656c7633;
-    --link: #4493f8;
-  }
-}
+:root[data-color-scheme="dark"] { color-scheme: dark; }
 
 * { box-sizing: border-box; }
-html { scroll-padding: 24px; background: var(--paper); }
-body { margin: 0; color: var(--ink); }
+html { scroll-padding: 24px; background: var(--paper, Canvas); }
+body { margin: 0; color: var(--ink, CanvasText); }
 article {
   width: min(calc(100% - 2 * var(--reader-gutter)), var(--reading-width));
   margin-inline: auto;
@@ -107,20 +77,15 @@ pre:has(> code > .code-line-number) { counter-reset: code-line; padding-inline-s
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
-.syntax-comment  { --syntax-light: #59636e; --syntax-dark: #9198a1; }
-.syntax-keyword  { --syntax-light: #cf222e; --syntax-dark: #ff7b72; }
-.syntax-string   { --syntax-light: #0a3069; --syntax-dark: #a5d6ff; }
-.syntax-constant { --syntax-light: #0550ae; --syntax-dark: #79c0ff; }
-.syntax-type,
-.syntax-function { --syntax-light: #8250df; --syntax-dark: #d2a8ff; }
-.syntax-tag      { --syntax-light: #116329; --syntax-dark: #7ee787; }
-.syntax-added    { --syntax-light: #116329; --syntax-dark: #aff5b4; }
-.syntax-removed  { --syntax-light: #82071e; --syntax-dark: #ffdcd7; }
-pre code .syntax { color: var(--syntax-light); }
-:root[data-color-scheme="dark"] pre code .syntax { color: var(--syntax-dark); }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-color-scheme]) pre code .syntax { color: var(--syntax-dark); }
-}
+pre code .syntax-comment { color: var(--syntax-comment); }
+pre code .syntax-keyword { color: var(--syntax-keyword); }
+pre code .syntax-string { color: var(--syntax-string); }
+pre code .syntax-constant { color: var(--syntax-constant); }
+pre code .syntax-type { color: var(--syntax-type); }
+pre code .syntax-function { color: var(--syntax-function); }
+pre code .syntax-tag { color: var(--syntax-tag); }
+pre code .syntax-added { color: var(--syntax-added); }
+pre code .syntax-removed { color: var(--syntax-removed); }
 
 table {
   display: block;

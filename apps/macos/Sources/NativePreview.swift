@@ -81,7 +81,7 @@ struct RichText: NSViewRepresentable {
 struct SourceEditor: NSViewRepresentable {
     @Binding var text: String
     let name: String
-    @Environment(\.colorScheme) private var colorScheme
+    let theme: FolioTheme
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -104,7 +104,7 @@ struct SourceEditor: NSViewRepresentable {
         editor.defaultParagraphStyle = paragraph
         editor.font = SourceEditorStyle.font(size: 15)
         editor.textContainerInset = NSSize(width: 8, height: 12)
-        editor.applyStyle(dark: colorScheme == .dark)
+        editor.applyStyle(theme)
         editor.string = text
         editor.isAutomaticQuoteSubstitutionEnabled = false
         editor.isAutomaticDashSubstitutionEnabled = false
@@ -120,11 +120,11 @@ struct SourceEditor: NSViewRepresentable {
 
     func updateNSView(_ view: NSScrollView, context: Context) {
         let coordinator = context.coordinator
-        let styleChanged = coordinator.owner.colorScheme != colorScheme
+        let styleChanged = coordinator.owner.theme != theme
         let refreshColors = styleChanged || coordinator.owner.name != name
         coordinator.owner = self
         guard let editor = view.documentView as? SourceTextView else { return }
-        if styleChanged { editor.applyStyle(dark: colorScheme == .dark) }
+        if styleChanged { editor.applyStyle(theme) }
         if editor.string != text {
             editor.string = text
             (view.verticalRulerView as? SourceLineRuler)?.refreshLineStarts()
