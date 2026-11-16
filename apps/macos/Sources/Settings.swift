@@ -36,17 +36,53 @@ struct Appearance: Equatable {
     }
 }
 
+@MainActor
+final class SettingsNavigation: ObservableObject {
+    enum Page: Hashable { case appearance, quickLook, updates }
+
+    @Published var page: Page = .appearance
+    var openSettings: OpenSettingsAction?
+    private var showingQuickLookSetup = false
+    private static let quickLookSetupKey = "folioQuickLookSetupSeen"
+
+    func open(_ page: Page) {
+        self.page = page
+        openSettings?()
+    }
+
+    func presentQuickLookSetupIfNeeded() -> Bool {
+        if showingQuickLookSetup { return true }
+        guard !InstanceMode.isSeparate, openSettings != nil,
+              !UserDefaults.standard.bool(forKey: Self.quickLookSetupKey) else { return false }
+        showingQuickLookSetup = true
+        open(.quickLook)
+        return true
+    }
+
+    func didDisplayQuickLook() {
+        guard !InstanceMode.isSeparate else { return }
+        UserDefaults.standard.set(true, forKey: Self.quickLookSetupKey)
+        showingQuickLookSetup = false
+    }
+}
+
 struct ReaderSettings: View {
     @ObservedObject var model: ReaderModel
     @ObservedObject var updates: FolioUpdates
+    @ObservedObject var navigation: SettingsNavigation
 
     var body: some View {
-        TabView(selection: $updates.settingsPage) {
-            appearance.tabItem { Label("Appearance", systemImage: "textformat") }.tag(FolioUpdates.SettingsPage.appearance)
+        TabView(selection: $navigation.page) {
+            appearance.tabItem { Label("Appearance", systemImage: "textformat") }.tag(SettingsNavigation.Page.appearance)
+            QuickLookSettings(isSelected: navigation.page == .quickLook)
+                .tabItem { Label("Quick Look", systemImage: "eye") }.tag(SettingsNavigation.Page.quickLook)
             UpdateSettings(updates: updates)
-                .tabItem { Label("Updates", systemImage: "arrow.clockwise") }.tag(FolioUpdates.SettingsPage.updates)
+                .tabItem { Label("Updates", systemImage: "arrow.clockwise") }.tag(SettingsNavigation.Page.updates)
         }
         .frame(width: 500, height: 420)
+        .onChange(of: navigation.page, initial: true) { _, page in
+            if page == .quickLook { navigation.didDisplayQuickLook() }
+        }
     }
 
     private var appearance: some View {

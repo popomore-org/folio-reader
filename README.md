@@ -77,6 +77,10 @@ folio --version
 
 打开成功时命令静默退出。退出码 `0` 表示 macOS 已接受打开请求，文件渲染错误显示在应用内。退出码 `1` 表示路径、应用或系统调用出错，`2` 表示参数错误。诊断写入 stderr。
 
+## Finder 快速查看
+
+第一次打开 Folio 主工作区会显示 **Settings → Quick Look**。该页显示当前应用的系统注册和启用状态，可注册扩展、清理同标识的旧注册或前往系统设置。启用 Folio 后，在 Finder 中选中文件并按空格预览。再次打开或从系统设置返回时会重新读取状态。
+
 ## 从其他应用快速预览
 
 Raycast 的 **Script Commands** 加入本仓的 `integrations/raycast` 目录，然后搜索 **Preview in Folio**。可以粘贴绝对文件路径，留空则打开系统文件选择器。首次使用前先打开一次 Folio，让 macOS 注册链接。

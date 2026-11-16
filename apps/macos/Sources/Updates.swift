@@ -5,8 +5,6 @@ import SwiftUI
 
 @MainActor
 final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserDriver {
-    enum SettingsPage: Hashable { case appearance, updates }
-
     private enum Phase {
         case idle, checking, offered, downloading, downloaded, waiting, installing, failed
     }
@@ -20,7 +18,6 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
         let signature: Data
     }
 
-    @Published var settingsPage: SettingsPage = .appearance
     @Published private var phase: Phase = .idle
     @Published private var offer: Offer?
     @Published private(set) var status = "Check for a new version of Folio."
@@ -58,7 +55,6 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     private var authorized: Offer?
     private var cachedRequest: URLRequest?
     private var previousCacheCapacity: Int?
-    var showSettings: OpenSettingsAction?
     private var retryTermination: (() -> Void)?
     private var postponeRelaunch: (() -> Void)?
     private var manualCheck = false
@@ -147,12 +143,6 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
             updater.automaticallyChecksForUpdates = enabled
         }
         defaults.set(true, forKey: Self.consentKey)
-    }
-
-    func openUpdateSettings() {
-        settingsPage = .updates
-        showSettings?()
-        check()
     }
 
     func savePrivateCredential(_ value: String) {

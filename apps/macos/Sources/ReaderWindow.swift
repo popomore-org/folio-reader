@@ -2,15 +2,9 @@ import AppKit
 import SwiftUI
 
 struct ReaderWindow: View {
-    let updates: FolioUpdates
     @ObservedObject var model: ReaderModel
-    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        workspace.onAppear { updates.showSettings = openSettings }
-    }
-
-    private var workspace: some View {
         VStack(spacing: 0) {
             HSplitView {
                 if model.sidebar {
