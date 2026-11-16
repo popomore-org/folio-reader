@@ -1,11 +1,13 @@
 name: Folio CI
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: folio-ci-${{ github.ref }}
+  group: folio-ci-${{ github.event_name == 'push' && github.run_id || github.ref }}
   cancel-in-progress: true
 jobs:
   rust:
@@ -64,3 +66,19 @@ jobs:
       results: ${{ toJSON(needs) }}
       required-success: '["rust","macos"]'
       runs-on: ubuntu-latest
+  tag:
+    name: Tag macOS Preview
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.private
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: popomore-org/meta/.github/actions/release-tag@a3a966614c0ccd31f4b2255808172390266b1d4f
+        with:
+          manifest-directory: .release/units
+          dry-run: false
+          tag-token: ${{ secrets.RELEASE_TAG_TOKEN }}

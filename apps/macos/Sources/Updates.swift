@@ -31,7 +31,8 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
         didSet { restartAfter = nil }
     }
 
-    let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+    let currentVersion = Bundle.main.object(forInfoDictionaryKey: "FolioPreviewVersion") as? String ??
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     private let feed = (Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String).flatMap { URL(string: $0) }
     private let privateChannel: PrivateUpdateChannel? = {
         guard Bundle.main.object(forInfoDictionaryKey: "FolioPrivateUpdates") as? Bool == true,

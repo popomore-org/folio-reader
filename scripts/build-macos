@@ -17,6 +17,12 @@ version="${FOLIO_VERSION:-0.1.0}"
 identity=-
 case "$mode" in
   preview) name="Folio Preview"; bundle_id=org.popomore.folio.preview ;;
+  preview-release)
+    name="Folio Preview"
+    bundle_id=org.popomore.folio.preview
+    [[ "${FOLIO_UPDATE_FEED:-}" =~ ^https://github\.com/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+/releases/download/v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{7}/appcast\.xml$ ]] ||
+      { echo "Preview release requires its HTTPS GitHub appcast." >&2; exit 1; }
+    ;;
   qa)
     name="Folio Update QA"
     bundle_id=org.popomore.folio.update-qa
@@ -33,9 +39,13 @@ case "$mode" in
       { echo "Release requires the HTTPS GitHub distribution appcast." >&2; exit 1; }
     : "${FOLIO_VERSION:?Set the release version from the verified source tag}"
     ;;
-  *) echo "Usage: scripts/build-macos [preview|qa|release]" >&2; exit 1 ;;
+  *) echo "Usage: scripts/build-macos [preview|preview-release|qa|release]" >&2; exit 1 ;;
 esac
-build_number="$(scripts/macos-version "$version")"
+if [[ "$mode" == preview-release ]]; then
+  build_number="$(scripts/macos-version "$version" "${FOLIO_PREVIEW_SUFFIX:?Set the validated preview timestamp and SHA}")"
+else
+  build_number="$(scripts/macos-version "$version")"
+fi
 bundle="$build/$name.app"
 sparkle="$(scripts/prepare-sparkle)"
 mkdir -p "$build"
@@ -67,7 +77,7 @@ with open(path, "rb") as file:
     info = plistlib.load(file)
 info.update(CFBundleDisplayName=name, CFBundleName=name, CFBundleIdentifier=identifier,
             CFBundleShortVersionString=version, CFBundleVersion=build)
-scheme = {"preview": "folio-reader-preview", "qa": "folio-reader-update-qa", "release": "folio-reader"}[mode]
+scheme = {"preview": "folio-reader-preview", "preview-release": "folio-reader-preview", "qa": "folio-reader-update-qa", "release": "folio-reader"}[mode]
 info.update(FolioPreviewScheme=scheme, CFBundleURLTypes=[
     {"CFBundleURLName": identifier + ".quick-preview", "CFBundleURLSchemes": [scheme], "CFBundleTypeRole": "Viewer"},
 ])
@@ -79,10 +89,12 @@ if mode != "preview":
                 SUEnableAutomaticChecks=False, SUAllowsAutomaticUpdates=False,
                 SUEnableDownloaderService=False, SUScheduledCheckInterval=86400,
                 SUVerifyUpdateBeforeExtraction=True, SURequireSignedFeed=True)
-if mode in ("qa", "release"):
+if mode != "preview":
     info["NSAppTransportSecurity"] = {"NSAllowsLocalNetworking": True}
-if mode == "release":
+if mode in ("release", "preview-release"):
     info["FolioPrivateUpdates"] = True
+if mode == "preview-release":
+    info["FolioPreviewVersion"] = version + "-" + os.environ["FOLIO_PREVIEW_SUFFIX"].replace("-", ".g")
 with open(path, "wb") as file:
     plistlib.dump(info, file)
 with open(extension_path, "rb") as file:

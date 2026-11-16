@@ -11,7 +11,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: folio-macos-release
+  group: ${{ github.ref_type == 'tag' && contains(github.ref_name, '-') && format('folio-macos-preview-{0}', github.ref_name) || 'folio-macos-release' }}
   cancel-in-progress: false
 jobs:
   source:
@@ -21,6 +21,8 @@ jobs:
       plan: ${{ steps.source.outputs.plan }}
       source-sha: ${{ steps.source.outputs.source-sha }}
       version: ${{ steps.source.outputs.version }}
+      channel: ${{ steps.source.outputs.channel }}
+      tag: ${{ steps.source.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -36,13 +38,17 @@ jobs:
           manifest: .release/units/folio.json
           tag: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
           dry-run: ${{ github.event_name != 'push' }}
-      - name: Validate stable Mac version
+      - name: Validate macOS release version
         env:
+          TAG: ${{ steps.source.outputs.tag }}
           VERSION: ${{ steps.source.outputs.version }}
           CHANNEL: ${{ steps.source.outputs.channel }}
         run: |
-          test "$CHANNEL" = stable
-          scripts/macos-version "$VERSION"
+          case "$CHANNEL" in
+            stable) scripts/macos-version "$VERSION" ;;
+            timestamp) scripts/macos-version "${VERSION%%-*}" "${TAG##*.}" ;;
+            *) echo "::error::Unsupported Folio release channel"; exit 1 ;;
+          esac
   verification:
     if: github.event_name == 'workflow_dispatch'
     needs: source
@@ -61,11 +67,24 @@ jobs:
           package-manager-cache: false
       - name: Install the pinned Rust toolchain
         run: rustup show active-toolchain
-      - run: scripts/prepare-update-qa
+      - if: needs.source.outputs.channel == 'stable'
+        run: scripts/prepare-update-qa
+      - if: needs.source.outputs.channel == 'timestamp'
+        name: Verify preview packaging with a temporary key
+        env:
+          FOLIO_RELEASE_REPOSITORY: ${{ github.repository }}
+          FOLIO_TAG: ${{ needs.source.outputs.tag }}
+          FOLIO_VERSION: ${{ needs.source.outputs.version }}
+        run: |
+          seed=$(xcrun swift scripts/macos-update-key.swift generate </dev/null)
+          echo "::add-mask::$seed"
+          FOLIO_UPDATE_PUBLIC_KEY=$(printf '%s\n' "$seed" | xcrun swift scripts/macos-update-key.swift)
+          export FOLIO_UPDATE_PUBLIC_KEY FOLIO_UPDATE_PRIVATE_KEY="$seed"
+          scripts/package-macos-preview
   release:
     if: github.event_name == 'push'
     needs: source
-    environment: folio-macos-release
+    environment: ${{ needs.source.outputs.channel == 'timestamp' && 'folio-macos-preview' || 'folio-macos-release' }}
     runs-on: xcode-27
     timeout-minutes: 80
     permissions:
@@ -75,6 +94,8 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
       FOLIO_RELEASE_REPOSITORY: ${{ github.repository }}
       FOLIO_VERSION: ${{ needs.source.outputs.version }}
+      FOLIO_TAG: ${{ needs.source.outputs.tag }}
+      FOLIO_RELEASE_CHANNEL: ${{ needs.source.outputs.channel }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,7 +106,8 @@ jobs:
         with:
           node-version-file: .node-version
           package-manager-cache: false
-      - name: Check distribution configuration
+      - name: Check private distribution and select assets
+        id: distribution
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -94,6 +116,20 @@ jobs:
           [[ "$FOLIO_RELEASE_REPOSITORY" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]
           test "$FOLIO_RELEASE_REPOSITORY" = "$GITHUB_REPOSITORY"
           gh api "repos/$FOLIO_RELEASE_REPOSITORY" | jq -e '.private == true'
+          if [[ "$FOLIO_RELEASE_CHANNEL" == timestamp ]]; then
+            stem="dist/Folio-Preview-$FOLIO_VERSION-arm64"
+            notes=".release/preview-notes.txt"
+            files=$(jq -cn --arg stem "$stem" '[$stem+".zip", $stem+".dmg", $stem+".dmg.sha256", "dist/appcast.xml"]')
+          else
+            stem="dist/Folio-$FOLIO_VERSION"
+            notes=".release/notes.txt"
+            files=$(jq -cn --arg stem "$stem" '[$stem+".zip", $stem+".dmg", "dist/appcast.xml"]')
+          fi
+          {
+            printf 'files=%s\nnotes=%s\npaths<<END_PATHS\n' "$files" "$notes"
+            jq -r '.[]' <<< "$files"
+            printf 'END_PATHS\n'
+          } >> "$GITHUB_OUTPUT"
       - id: published
         uses: popomore-org/meta/.github/actions/release-assets@a3a966614c0ccd31f4b2255808172390266b1d4f
         with:
@@ -150,7 +186,13 @@ jobs:
       - if: fromJSON(steps.published.outputs.target).release_id == null && steps.signed.outputs.id == ''
         name: Install the pinned Rust toolchain
         run: rustup show active-toolchain
-      - if: fromJSON(steps.published.outputs.target).release_id == null && steps.signed.outputs.id == ''
+      - if: fromJSON(steps.published.outputs.target).release_id == null && steps.signed.outputs.id == '' && needs.source.outputs.channel == 'timestamp'
+        name: Build ad hoc preview and sign the Sparkle update
+        env:
+          FOLIO_UPDATE_PRIVATE_KEY: ${{ secrets.FOLIO_UPDATE_PRIVATE_KEY }}
+          FOLIO_UPDATE_PUBLIC_KEY: ${{ vars.FOLIO_UPDATE_PUBLIC_KEY }}
+        run: scripts/package-macos-preview
+      - if: fromJSON(steps.published.outputs.target).release_id == null && steps.signed.outputs.id == '' && needs.source.outputs.channel == 'stable'
         name: Import Developer ID and build notarized packages
         env:
           FOLIO_APPLE_CERTIFICATE: ${{ secrets.FOLIO_APPLE_CERTIFICATE }}
@@ -190,10 +232,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: folio-signed-packages
-          path: |
-            dist/Folio-${{ env.FOLIO_VERSION }}.zip
-            dist/Folio-${{ env.FOLIO_VERSION }}.dmg
-            dist/appcast.xml
+          path: ${{ steps.distribution.outputs.paths }}
           if-no-files-found: error
           compression-level: 0
       - if: fromJSON(steps.published.outputs.target).release_id == null
@@ -204,13 +243,13 @@ jobs:
           plan: ${{ needs.source.outputs.plan }}
           repository: ${{ env.FOLIO_RELEASE_REPOSITORY }}
           token: ${{ github.token }}
-          notes-file: .release/notes.txt
-          files: '["dist/Folio-${{ env.FOLIO_VERSION }}.zip","dist/Folio-${{ env.FOLIO_VERSION }}.dmg","dist/appcast.xml"]'
+          notes-file: ${{ steps.distribution.outputs.notes }}
+          files: ${{ steps.distribution.outputs.files }}
           draft-only: true
           dry-run: false
           receipt-file: dist/staging-receipt.json
       - if: fromJSON(steps.published.outputs.target).release_id == null
-        name: Verify remote bytes and promote stable channel
+        name: Verify remote bytes and publish the selected channel
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ fromJSON(steps.stage.outputs.target).release_id }}

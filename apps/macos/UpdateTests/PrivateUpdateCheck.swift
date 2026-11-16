@@ -17,8 +17,22 @@ final class ReleaseFixture: URLProtocol, @unchecked Sendable {
                 {"tag_name":"v0.1.1","draft":false,"prerelease":false,"immutable":true,
                  "assets":[{"id":11,"name":"appcast.xml"},{"id":12,"name":"Folio-0.1.1.zip"}]}
                 """
+        } else if url.path == "/repos/example/folio/releases" {
+            precondition(url.query == "per_page=100&page=1")
+            precondition(request.value(forHTTPHeaderField: "Accept") == "application/vnd.github+json")
+            body = """
+                [
+                  {"tag_name":"v0.1.2","draft":false,"prerelease":false,"immutable":true,"assets":[]},
+                  {"tag_name":"preview-v0.1.0","draft":false,"prerelease":true,"immutable":true,"assets":[]},
+                  {"tag_name":"v0.1.1.1793840001-abcdef0","draft":false,"prerelease":true,"immutable":true,"assets":[]},
+                  {"tag_name":"v0.1.1.1793840000-abcdef1","draft":false,"prerelease":true,"immutable":true,
+                   "assets":[{"id":21,"name":"appcast.xml"},{"id":22,"name":"Folio-Preview-0.1.1-1793840000.gabcdef1-arm64.zip"}]},
+                  {"tag_name":"v0.1.1.1793840000-abcdef0","draft":false,"prerelease":true,"immutable":true,
+                   "assets":[{"id":23,"name":"appcast.xml"},{"id":24,"name":"Folio-Preview-0.1.1-1793840000.gabcdef0-arm64.zip"}]}
+                ]
+                """
         } else {
-            precondition(url.path == "/repos/example/folio/releases/assets/11")
+            precondition(["/repos/example/folio/releases/assets/11", "/repos/example/folio/releases/assets/21"].contains(url.path))
             precondition(request.value(forHTTPHeaderField: "Accept") == "application/octet-stream")
             body = "<rss />"
         }
@@ -55,6 +69,14 @@ struct PrivateUpdateCheck {
         let original = channel.archiveRequest(snapshot, token: "fixture_token")
         precondition(original.url?.absoluteString == "https://api.github.com/repos/example/folio/releases/assets/12")
 
+        let previewTag = "v0.1.1.1793840000-abcdef0"
+        let previewFeed = URL(string: "https://github.com/example/folio/releases/download/\(previewTag)/appcast.xml")!
+        let preview = PrivateUpdateChannel(feed: previewFeed, bundleID: "example.preview")!
+        let previewSnapshot = try await preview.latest(token: "fixture_token", using: session)
+        let previewArchive = "https://github.com/example/folio/releases/download/v0.1.1.1793840000-abcdef1/Folio-Preview-0.1.1-1793840000.gabcdef1-arm64.zip"
+        precondition(previewSnapshot.archiveURL.absoluteString == previewArchive)
+        precondition(preview.archiveRequest(previewSnapshot, token: "fixture_token").url?.lastPathComponent == "22")
+
         var redirect = URLRequest(url: URL(string: "https://release-assets.githubusercontent.com/temporary-file")!)
         redirect.setValue("Bearer fixture_token", forHTTPHeaderField: "Authorization")
         let escaped = UpdateTransport.redirect(redirect, from: original)
@@ -69,6 +91,6 @@ struct PrivateUpdateCheck {
         } catch let error as UpdateFailure {
             precondition(error.localizedDescription.contains("Check the token"))
         }
-        print("Verified authenticated GitHub requests, local appcast handoff, and credential-free redirects.")
+        print("Verified stable and preview update selection, local appcast handoff, and credential-free redirects.")
     }
 }
