@@ -11,7 +11,8 @@ if [[ "$(jq -r '.auto_on_main' "$manifest")" != true ]]; then
   exit 0
 fi
 paths="$(jq -er '.paths[]' "$manifest")"
-mapfile -t release_paths <<< "$paths"
+release_paths=()
+while IFS= read -r path; do release_paths+=("$path"); done <<< "$paths"
 if git diff --quiet "$base_sha" "$source_sha" -- "${release_paths[@]}"; then
   exit 0
 else
