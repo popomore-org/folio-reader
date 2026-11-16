@@ -29,6 +29,18 @@
                 <string>org.popomore.folio.configuration</string>
                 <string>com.nssurge.conf</string>
                 <string>org.popomore.folio.source-code</string>
+                <string>org.popomore.folio.lua-source</string>
+                <string>org.popomore.folio.cs-source</string>
+                <string>org.popomore.folio.dart-source</string>
+                <string>org.popomore.folio.zig-source</string>
+                <string>org.popomore.folio.fish-source</string>
+                <string>org.popomore.folio.vue-source</string>
+                <string>org.popomore.folio.svelte-source</string>
+                <string>public.source-code</string>
+                <string>public.ruby-script</string>
+                <string>public.php-script</string>
+                <string>public.objective-c-source</string>
+                <string>public.objective-c-plus-plus-source</string>
                 <string>public.swift-source</string>
                 <string>public.c-source</string>
                 <string>public.c-header</string>

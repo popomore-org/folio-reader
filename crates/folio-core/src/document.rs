@@ -60,6 +60,7 @@ impl FileKind {
             {
                 Self::Text
             }
+            _ if syntax::for_file(path).is_some() => Self::Text,
             _ => Self::Other,
         }
     }

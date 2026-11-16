@@ -26,7 +26,7 @@ struct PreviewCheck {
         defer { try? FileManager.default.removeItem(at: root) }
 
         let native = "rtf pdf png jpeg jpg gif webp heic tif tiff bmp avif svg mp3 m4a aac wav aiff caf flac mp4 m4v mov"
-        let text = "md markdown mdown mkd html htm csv tsv mmd mermaid vl txt text log json jsonl yaml yml xml toml ini conf rs swift c h cpp hpp py js ts jsx tsx go java kt sh zsh sql css scss diff patch"
+        let text = "md markdown mdown mkd html htm csv tsv mmd mermaid vl txt text log json jsonl yaml yml xml toml ini conf rs swift c h cpp hpp py js ts jsx tsx go java kt sh zsh sql css scss diff patch lua rb php cs dart zig fish vue svelte m mm cxx hxx"
         let media = Set(native.split(separator: " ").map(String.init))
         let suffixes = (native + " " + text).split(separator: " ").map(String.init)
         for suffix in suffixes {
@@ -55,6 +55,9 @@ struct PreviewCheck {
         let markdown = try html("Notes.MDOWN", "\u{FEFF}# 快速查看\n\n- [x] Sample", root: root, resources: resources)
         try require(markdown.contains("<h1 id=") && markdown.contains("快速查看") && !markdown.contains("\u{FEFF}"),
                     "Markdown extensions must have rendered headings with BOM removed.")
+        let lua = try html("module.lua", "local count = 42", root: root, resources: resources)
+        try require(lua.contains("syntax-keyword") && lua.contains("syntax-constant"),
+                    "A Lua source file should be recognized and highlighted in Quick Look.")
         let code = try html("example.swift", "let count = 42", root: root, resources: resources)
         try require(code.contains("<span class=\"syntax syntax-keyword\">let</span>"),
                     "A source document should include highlighted code in Quick Look.")

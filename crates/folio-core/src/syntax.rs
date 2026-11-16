@@ -74,26 +74,26 @@ pub struct SourceHighlight {
 
 type Span = (Range<usize>, SyntaxToken);
 
-fn for_file(path: &Path) -> Option<&'static SyntaxReference> {
-    let name = path.file_name()?.to_str()?.to_ascii_lowercase();
-    let extension = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    if matches!(extension.as_str(), "txt" | "text" | "log") {
-        return None;
+pub(crate) fn for_file(path: &Path) -> Option<&'static SyntaxReference> {
+    let name = path.file_name()?.to_str()?;
+    if let Some(syntax) = SYNTAXES.find_syntax_by_extension(name)
+        && syntax.name != "Plain Text"
+        && !name.eq_ignore_ascii_case("log")
+    {
+        return Some(syntax);
     }
-    let token = match (name.as_str(), extension.as_str()) {
-        ("makefile", "") => "make",
-        ("dockerfile", "") => "dockerfile",
-        (_, "jsonl") => "json",
-        (_, "patch") => "diff",
-        (_, "zsh") => "sh",
-        (_, "mdown" | "mkd") => "md",
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+    let extension = match extension.as_str() {
+        "txt" | "text" | "log" => return None,
+        "jsonl" => "json",
+        "patch" => "diff",
+        "zsh" => "sh",
+        "mdown" | "mkd" => "md",
         _ => &extension,
     };
-    for_token(token)
+    SYNTAXES
+        .find_syntax_by_extension(extension)
+        .filter(|syntax| syntax.name != "Plain Text")
 }
 
 pub(crate) fn for_token(token: &str) -> Option<&'static SyntaxReference> {
