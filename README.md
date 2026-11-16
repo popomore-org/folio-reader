@@ -39,9 +39,9 @@ DOCX 和 EPUB 目前可从未知格式提示打开系统默认应用。目录默
 
 ### 自定义主题
 
-在 **Settings → Appearance → Themes** 点 **Open Theme Folder**。Folio 会创建可编辑的 `light.json` 和 `dark.json`，已有文件会保留。修改后点 **Reload Themes**，当前打开的工作区和 Folio 预览小窗会更新配色。Finder 快速查看使用随应用附带的默认配色。
+在 **Settings → Appearance → Themes** 点 **Open Theme Folder**。Folio 会准备可编辑的 `folio-light.json` 和 `folio-dark.json`。已有的无前缀文件会沿用原内容改名。两种名称同时存在时，Folio 优先读取带前缀的文件。修改后点 **Reload Themes**，当前打开的工作区和 Folio 预览小窗会更新配色。Finder 快速查看使用随应用附带的默认配色。
 
-主题可设置工作区（`workspace`）、源码编辑器（`editor` 和 `editor-syntax`）以及阅读区（`reader` 和 `reader-syntax`）。颜色支持 `#RRGGBB` 和 `#RRGGBBAA`，省略的字段沿用默认值。完整字段见内置的 [light.json](apps/macos/Themes/light.json) 和 [dark.json](apps/macos/Themes/dark.json)。设置会显示无法读取的文件，并保留最后一次有效的配色。删除自定义文件后重新加载即可恢复该外观的默认配色。
+主题可设置工作区（`workspace`）、源码编辑器（`editor` 和 `editor-syntax`）以及阅读区（`reader` 和 `reader-syntax`）。颜色支持 `#RRGGBB` 和 `#RRGGBBAA`，省略的字段沿用默认值。完整字段见内置的 [folio-light.json](apps/macos/Themes/folio-light.json) 和 [folio-dark.json](apps/macos/Themes/folio-dark.json)。设置会显示无法读取的文件，并保留最后一次有效的配色。删除该外观的自定义文件后重新加载即可恢复默认配色。
 
 ## 构建与验证
 

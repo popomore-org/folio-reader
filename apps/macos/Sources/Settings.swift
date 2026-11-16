@@ -114,7 +114,7 @@ struct ReaderSettings: View {
                         themeMessage = ThemeStore.shared.problems.isEmpty ? "Themes reloaded." : nil
                     }
                 }
-                Text("Edit light.json or dark.json, then reload. Finder uses the bundled themes.")
+                Text("Edit \(ThemeMode.light.filename) or \(ThemeMode.dark.filename), then reload. Finder uses the bundled themes.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 if let themeMessage { Text(themeMessage).font(.callout) }

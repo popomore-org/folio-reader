@@ -163,7 +163,7 @@ struct PreviewCheck {
         for invalid in [#"{"reader":{"paper":"tomato"}}"#, ##"{"reader":{"typo":"#123456"}}"##] {
             try Data(invalid.utf8).write(to: file, options: .atomic)
             store.reload()
-            try require(store.problems.first?.hasPrefix("light.json") == true &&
+            try require(store.problems.first?.hasPrefix("folio-light.json") == true &&
                         store[.light] == customized && store[.dark] == originalDark,
                         "Invalid theme files should report an error and preserve the last valid palette.")
         }
@@ -171,6 +171,24 @@ struct PreviewCheck {
         store.reload()
         try require(store.problems.isEmpty && store[.light] == originalLight,
                     "Removing an override should restore the bundled palette.")
+
+        let legacyLight = directory.appendingPathComponent("light.json")
+        let legacyDark = directory.appendingPathComponent("dark.json")
+        let customData = Data(custom.utf8)
+        try customData.write(to: legacyLight)
+        try customData.write(to: legacyDark)
+        store.reload()
+        try require(store.problems.isEmpty && store[.light] == customized && store[.dark] == originalDark,
+                    "Legacy filenames should load while existing prefixed files take precedence.")
+        try store.prepareDirectory()
+        try store.prepareDirectory()
+        let migrated = try Data(contentsOf: file)
+        let preserved = try Data(contentsOf: legacyDark)
+        store.reload()
+        try require(store.problems.isEmpty && store[.light] == customized && store[.dark] == originalDark &&
+                    migrated == customData && preserved == customData &&
+                    !FileManager.default.fileExists(atPath: legacyLight.path),
+                    "Opening the theme folder should move the legacy file when the new filename is free.")
     }
 
     private static func html(_ name: String, _ source: String, root: URL, resources: Bundle) throws -> String {

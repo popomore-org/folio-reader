@@ -3,7 +3,8 @@ import Foundation
 enum ThemeMode: String, CaseIterable, Sendable {
     case light, dark
 
-    var filename: String { rawValue + ".json" }
+    var filename: String { "folio-" + legacyFilename }
+    var legacyFilename: String { rawValue + ".json" }
 }
 
 struct ThemeColor: Decodable, Equatable, Sendable {
@@ -54,7 +55,7 @@ struct FolioTheme: Equatable, Sendable {
     }
 
     static func bundledURL(for mode: ThemeMode, in bundle: Bundle) throws -> URL {
-        guard let url = bundle.url(forResource: mode.rawValue, withExtension: "json", subdirectory: "Themes") else {
+        guard let url = bundle.url(forResource: mode.filename, withExtension: nil, subdirectory: "Themes") else {
             throw CoreError(message: "The bundled \(mode.filename) is missing.")
         }
         return url
