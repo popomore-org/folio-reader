@@ -38,9 +38,11 @@ Add that directory to `PATH` if needed.
 folio .                        # Open the current folder
 folio "Project Notes.md"       # Open a file in the workspace
 folio preview "Project Notes.md"
-folio --new-instance .
+folio --reuse .                # Use an existing Folio instance if available
 folio --help
 ```
+
+By default, `folio` and `folio preview` start a separate Folio process with an independent workspace. `-n` and `--new-instance` also select that behavior.
 
 To use Raycast, add [integrations/raycast](integrations/raycast) to its Script Commands and run **Preview in Folio**.
 

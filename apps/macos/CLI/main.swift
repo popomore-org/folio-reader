@@ -1,8 +1,8 @@
 import AppKit
 
 private let help = """
-Usage: folio [--app APP] [-n] [open] [--] [PATH ...]
-       folio [--app APP] [-n] preview [--] [FILE]
+Usage: folio [--app APP] [--reuse] [open] [--] [PATH ...]
+       folio [--app APP] [--reuse] preview [--] [FILE]
        folio [--app APP] install
        folio [--app APP] --version
        folio --help
@@ -11,8 +11,9 @@ Usage: folio [--app APP] [-n] [open] [--] [PATH ...]
   preview   Open a file in the preview window. Omit FILE to choose one in Folio.
   install   Install or repair the Folio link in ~/.local/bin.
   --app     Use a specific Folio .app bundle. Overrides FOLIO_APP.
+  --reuse   Use a running Folio process if available.
   -n, --new-instance
-            Start a separate Folio process with an independent workspace.
+            Start a separate Folio process with an independent workspace (default).
 
 Paths may be relative to the current directory. Use -- before a path starting with -.
 """
@@ -121,7 +122,7 @@ private func run() async throws {
     var arguments = ArraySlice(CommandLine.arguments.dropFirst())
     var explicitApp: String?
     var command: Command?
-    var newInstance = false
+    var instanceOverride: Bool?
     options: while let argument = arguments.first, argument != "--" {
         switch argument {
         case "--help":
@@ -134,7 +135,10 @@ private func run() async throws {
             }
             explicitApp = path
         case "-n", "--new-instance":
-            newInstance = true
+            instanceOverride = true
+            arguments.removeFirst()
+        case "--reuse":
+            instanceOverride = false
             arguments.removeFirst()
         default:
             guard command == nil, let selected = Command(rawValue: argument) else { break options }
@@ -147,9 +151,11 @@ private func run() async throws {
     } else if let flag = arguments.first(where: { $0.hasPrefix("-") }) {
         throw Failure("Unknown option \(flag). Use -- before a path starting with -.", status: 2)
     }
-    if newInstance && (command == .install || command == .version) {
-        throw Failure("--new-instance only applies to opening or previewing files.", status: 2)
+    if let instanceOverride, command == .install || command == .version {
+        let option = instanceOverride ? "--new-instance" : "--reuse"
+        throw Failure("\(option) only applies to opening or previewing files.", status: 2)
     }
+    let newInstance = instanceOverride ?? true
     switch command ?? .open {
     case .version, .install:
         guard arguments.isEmpty else { throw Failure("This command takes no paths.", status: 2) }
