@@ -2,14 +2,11 @@ import AppKit
 
 @MainActor
 final class SourceLineRuler: NSRulerView {
-    private weak var editor: NSTextView?
+    private weak var editor: SourceTextView?
     private var lineStarts = [0]
-    private let labelAttributes: [NSAttributedString.Key: Any] = [
-        .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
-        .foregroundColor: NSColor.secondaryLabelColor,
-    ]
+    private let labelFont = SourceEditorStyle.font(size: 12)
 
-    init(scrollView: NSScrollView, editor: NSTextView) {
+    init(scrollView: NSScrollView, editor: SourceTextView) {
         self.editor = editor
         super.init(scrollView: scrollView, orientation: .verticalRuler)
         clipsToBounds = true
@@ -33,8 +30,8 @@ final class SourceLineRuler: NSRulerView {
             text.getLineStart(nil, end: &end, contentsEnd: &contentsEnd, for: NSRange(location: end, length: 0))
             if contentsEnd < end { lineStarts.append(end) }
         }
-        let width = (String(lineStarts.count) as NSString).size(withAttributes: labelAttributes).width
-        let thickness = max(41, ceil(width) + 18)
+        let width = (String(lineStarts.count) as NSString).size(withAttributes: [.font: labelFont]).width
+        let thickness = max(44, ceil(width) + 22)
         if ruleThickness != thickness { ruleThickness = thickness }
         needsDisplay = true
     }
@@ -44,32 +41,36 @@ final class SourceLineRuler: NSRulerView {
         let dirty = rect.intersection(bounds)
         editor.backgroundColor.setFill()
         dirty.fill()
-        NSColor.separatorColor.setFill()
-        NSRect(x: bounds.maxX - 1, y: dirty.minY, width: 1, height: dirty.height).fill()
 
         let origin = editor.textContainerOrigin
         let visible = editor.visibleRect.offsetBy(dx: -origin.x, dy: -origin.y)
         let glyphs = layout.glyphRange(forBoundingRect: visible, in: container)
+        let active = editor.activeLineStart
         layout.enumerateLineFragments(forGlyphRange: glyphs) { fragment, _, _, range, _ in
             let offset = layout.characterIndexForGlyph(at: range.location)
             // A soft wrap has a layout fragment but no entry in lineStarts.
             if let number = self.lineNumber(at: offset) {
-                self.drawNumber(number, at: origin.y + fragment.midY, from: editor)
+                self.drawNumber(number, active: offset == active, at: origin.y + fragment.midY, from: editor)
             }
         }
         if lineStarts.last == layout.textStorage?.length,
            layout.extraLineFragmentTextContainer === container,
            layout.extraLineFragmentRect.intersects(visible) {
-            drawNumber(lineStarts.count, at: origin.y + layout.extraLineFragmentRect.midY, from: editor)
+            drawNumber(lineStarts.count, active: lineStarts.last == active,
+                       at: origin.y + layout.extraLineFragmentRect.midY, from: editor)
         }
     }
 
-    private func drawNumber(_ number: Int, at editorY: CGFloat, from editor: NSTextView) {
+    private func drawNumber(_ number: Int, active: Bool, at editorY: CGFloat, from editor: SourceTextView) {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: labelFont,
+            .foregroundColor: active ? editor.style.activeLineNumber : editor.style.lineNumber,
+        ]
         let label = String(number) as NSString
-        let size = label.size(withAttributes: labelAttributes)
+        let size = label.size(withAttributes: attributes)
         let y = convert(NSPoint(x: 0, y: editorY), from: editor).y
         label.draw(at: NSPoint(x: bounds.maxX - size.width - 9, y: y - size.height / 2),
-                   withAttributes: labelAttributes)
+                   withAttributes: attributes)
     }
 
     private func lineNumber(at offset: Int) -> Int? {

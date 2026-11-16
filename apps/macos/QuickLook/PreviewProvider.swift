@@ -80,12 +80,7 @@ final class PreviewProvider: QLPreviewProvider, QLPreviewingController {
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
             <style>
             \(style)
-            :root { color-scheme: light dark; }
-            body { background: Canvas; }
-            article { padding-block: 28px 46px; }
-            @media (prefers-color-scheme: dark) {
-              :root { --line: #353d4b; --inset: #282f3c; --link: #9cb7ee; }
-            }
+            article { padding-block-end: 46px; }
             </style>
             </head>
             <body><article>\(preview.html)</article></body>

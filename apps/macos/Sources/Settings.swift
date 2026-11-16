@@ -15,16 +15,16 @@ enum WorkspaceAppearance: String, CaseIterable, Identifiable {
 
 struct Appearance: Equatable {
     var workspace: WorkspaceAppearance = .system
-    var size = 18.0
+    var size = 16.0
     var width = 700.0
-    var serif = true
+    var serif = false
 
     init() {
         let defaults = UserDefaults.standard
         workspace = WorkspaceAppearance(rawValue: defaults.string(forKey: "workspaceAppearance") ?? "") ?? .system
-        size = min(30, max(13, defaults.object(forKey: "textSize") as? Double ?? 18))
-        width = defaults.object(forKey: "readerWidth") as? Double ?? 700
-        serif = defaults.object(forKey: "serif") as? Bool ?? true
+        size = min(30, max(13, defaults.object(forKey: "textSize") as? Double ?? size))
+        width = defaults.object(forKey: "readerWidth") as? Double ?? width
+        serif = defaults.object(forKey: "serif") as? Bool ?? serif
     }
 
     func persist() {

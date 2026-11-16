@@ -35,6 +35,8 @@ DOCX 和 EPUB 目前可从未知格式提示打开系统默认应用。目录默
 
 直接打开源码文件即可高亮，阅读与编辑共用 [two-face 语法库](https://docs.rs/two-face/latest/two_face/)，按文件后缀或项目文件名识别语言。在 Markdown 代码围栏上指定语言，例如 `rust` 或 `swift`，即可高亮代码块。源码阅读、编辑和 Markdown 代码块按原始文本行显示行号，复制时只复制代码。Finder 快速查看共用阅读样式。
 
+源码编辑参考本机 Zed 的字体、行距和 Catppuccin 配色，优先使用本机 JetBrains Mono。阅读采用 GitHub Primer 排版和语法颜色，新配置默认使用 16 点无衬线字体。两种视图都随外观切换浅色和深色。参考来源见 [阅读器设计](docs/reader-design.md)。
+
 ## 构建与验证
 
 构建需要 Apple Silicon Mac、Xcode 27.2、Rust 1.97.0、Node 26.13.0。使用 `rust-toolchain.toml`、`.node-version` 和两个锁文件。

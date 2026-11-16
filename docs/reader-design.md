@@ -22,7 +22,12 @@
 | 找到当前文件 | Project Panel 切换文件时自动定位对应条目，目录展开可用方向键。[Zed Project Panel](https://zed.dev/docs/project-panel) | 在左右栏切换标签时展开对应父目录并滚到文件行，⇧⌘E 将键盘焦点移到目录树，方向键用于移动和展开，Return 打开文件。 |
 | 对照两份文件 | 顶部标签和面板边界使活动区域容易辨认，分栏操作靠近标签。[Zed Splitting Panes](https://zed.dev/features#splitting-panes) | 每栏各自显示紧凑的标签，活动栏用轻量标记。保留阅读区的页宽和行距。 |
 | 浏览 Git | 底栏打开 Git，变更、历史和详情共享导航位置。提交行可以同时呈现摘要、作者、时间和短 SHA。[Zed Git](https://zed.dev/docs/git) | 用一行底栏作为入口，独立视图保留足够的差异宽度。提交历史使用摘要、作者、日期和短 SHA 的列布局，下方展示补丁。窄窗口缩减列宽需求。 |
-| 视觉层级 | 导航、标签和底栏使用相近背景，以细分隔线区分区域。强调色集中于选中状态和 Git 增删。 | 统一导航表面，只在当前文件、活动栏和差异状态使用强调色。正文复用阅读窗格底色，表格、引用和代码块沿用导航的灰蓝色。 |
+| 视觉层级 | 导航、标签和底栏使用相近背景，以细分隔线区分区域。强调色集中于选中状态和 Git 增删。 | 统一导航表面，在当前文件、活动栏和差异状态使用强调色。 |
+
+## 编辑与渲染样式
+
+- 本机 Zed 1.28.1 使用 15 点 JetBrains Mono Nerd Font 和 Catppuccin Macchiato。Folio 在深色编辑器沿用该配色，浅色采用 Latte 并加深小字号文字的颜色。编辑器用 24 点行高、等宽行号和当前行高亮。本机缺少 JetBrains Mono 时使用系统等宽字体。[Zed 编辑器设置](https://zed.dev/docs/reference/all-settings#buffer-line-height) · [Catppuccin for Zed](https://github.com/catppuccin/zed/blob/main/themes/catppuccin-mauve.json)
+- 阅读与 Finder 快速查看采用 GitHub Primer 的标题、段落、表格、引用、代码块和 Prettylights 颜色。默认正文为 16 点系统无衬线，1.5 倍行高。主应用可继续使用已保存的字体、字号和宽度。[Primer Markdown](https://github.com/primer/css/tree/main/src/markdown) · [Primer 语法颜色](https://github.com/primer/primitives/blob/main/src/tokens/functional/color/syntax.json5)
 
 ## 文件图标与两栏
 
