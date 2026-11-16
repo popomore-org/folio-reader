@@ -109,9 +109,10 @@ struct PrivateUpdateChannel: Sendable {
             try validate(response, authenticated: token != nil)
             let releases = try decoder.decode([Release].self, from: data)
             for release in releases where !release.draft && release.prerelease && release.immutable {
-                guard let build = Self.previewVersion(release.tagName) else { continue }
-                let archiveName = "Folio-Preview-\(build.version)-arm64.zip"
-                guard assetURL("appcast.xml", in: release) != nil, assetURL(archiveName, in: release) != nil else { continue }
+                guard let build = Self.previewVersion(release.tagName), assetURL("appcast.xml", in: release) != nil else { continue }
+                let suffix = "\(build.version)-arm64.zip"
+                let names = ["Folio-\(suffix)", "Folio-Preview-\(suffix)"]
+                guard let archiveName = names.first(where: { assetURL($0, in: release) != nil }) else { continue }
                 if let latest, latest.order >= build.order { continue }
                 latest = (release, archiveName, build.order)
             }

@@ -1,6 +1,8 @@
 import Foundation
 
-final class ReleaseFixture: URLProtocol, @unchecked Sendable {
+class ReleaseFixture: URLProtocol, @unchecked Sendable {
+    var previewArchivePrefix: String { "Folio-" }
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
@@ -26,17 +28,21 @@ final class ReleaseFixture: URLProtocol, @unchecked Sendable {
                   {"tag_name":"preview-v0.1.0","draft":false,"prerelease":true,"immutable":true,"assets":[]},
                   {"tag_name":"v0.1.1.1793840001-abcdef0","draft":false,"prerelease":true,"immutable":true,"assets":[]},
                   {"tag_name":"v0.1.1.1793840000-abcdef1","draft":false,"prerelease":true,"immutable":true,
-                   "assets":[{"id":21,"name":"appcast.xml"},{"id":22,"name":"Folio-Preview-0.1.1-1793840000.gabcdef1-arm64.zip"}]},
+                   "assets":[{"id":21,"name":"appcast.xml"},{"id":22,"name":"\(previewArchivePrefix)0.1.1-1793840000.gabcdef1-arm64.zip"}]},
                   {"tag_name":"v0.1.1.1793840000-abcdef0","draft":false,"prerelease":true,"immutable":true,
                    "assets":[{"id":23,"name":"appcast.xml"},{"id":24,"name":"Folio-Preview-0.1.1-1793840000.gabcdef0-arm64.zip"}]}
                 ]
                 """
         } else if url.host == "github.com" {
             precondition(token == nil)
-            precondition(url.path == "/example/folio/releases/download/v0.1.1.1793840000-abcdef1/appcast.xml")
+            precondition([
+                "/example/folio/releases/download/v0.1.1.1793840000-abcdef1/appcast.xml",
+                "/example/folio/releases/download/v0.1.1.1793840000-abcdef0/appcast.xml",
+            ].contains(url.path))
             body = "<rss />"
         } else {
-            precondition(["/repos/example/folio/releases/assets/11", "/repos/example/folio/releases/assets/21"].contains(url.path))
+            precondition(["/repos/example/folio/releases/assets/11", "/repos/example/folio/releases/assets/21",
+                          "/repos/example/folio/releases/assets/23"].contains(url.path))
             precondition(request.value(forHTTPHeaderField: "Accept") == "application/octet-stream")
             body = "<rss />"
         }
@@ -48,6 +54,10 @@ final class ReleaseFixture: URLProtocol, @unchecked Sendable {
     }
 
     override func stopLoading() {}
+}
+
+final class LegacyReleaseFixture: ReleaseFixture, @unchecked Sendable {
+    override var previewArchivePrefix: String { "Folio-Preview-" }
 }
 
 @main
@@ -77,13 +87,19 @@ struct PrivateUpdateCheck {
         let previewFeed = URL(string: "https://github.com/example/folio/releases/download/\(previewTag)/appcast.xml")!
         let preview = PrivateUpdateChannel(feed: previewFeed, bundleID: "example.preview")!
         let previewSnapshot = try await preview.latest(token: "fixture_token", using: session)
-        let previewArchive = "https://github.com/example/folio/releases/download/v0.1.1.1793840000-abcdef1/Folio-Preview-0.1.1-1793840000.gabcdef1-arm64.zip"
+        let previewArchive = "https://github.com/example/folio/releases/download/v0.1.1.1793840000-abcdef1/Folio-0.1.1-1793840000.gabcdef1-arm64.zip"
         precondition(previewSnapshot.archiveURL.absoluteString == previewArchive)
         precondition(preview.archiveRequest(previewSnapshot, token: "fixture_token").url?.lastPathComponent == "22")
         let publicPreview = try await preview.latest(token: nil, using: session)
         let publicArchive = preview.archiveRequest(publicPreview, token: nil)
         precondition(publicArchive.url?.absoluteString == previewArchive)
         precondition(publicArchive.value(forHTTPHeaderField: "Authorization") == nil)
+
+        let legacyConfig = URLSessionConfiguration.ephemeral
+        legacyConfig.protocolClasses = [LegacyReleaseFixture.self]
+        let legacySession = URLSession(configuration: legacyConfig)
+        let legacyPreview = try await preview.latest(token: nil, using: legacySession)
+        precondition(legacyPreview.archiveURL.lastPathComponent == "Folio-Preview-0.1.1-1793840000.gabcdef1-arm64.zip")
 
         var redirect = URLRequest(url: URL(string: "https://release-assets.githubusercontent.com/temporary-file")!)
         redirect.setValue("Bearer fixture_token", forHTTPHeaderField: "Authorization")
