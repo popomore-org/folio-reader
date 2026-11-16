@@ -5,7 +5,24 @@ cd "$(dirname "$0")/.."
 : "${FOLIO_RELEASE_REPOSITORY:?Set the distribution repository}"
 repo="repos/$FOLIO_RELEASE_REPOSITORY"
 version="${1:?Supply the version}"
-current_build="$(scripts/macos-version "$version")"
+channel="${FOLIO_RELEASE_CHANNEL:-stable}"
+tag="${FOLIO_TAG:-v$version}"
+case "$channel" in
+  timestamp)
+    [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)\.([1-9][0-9]{0,11})-([0-9a-f]{7})$ ]]
+    test "$version" = "${BASH_REMATCH[1]}-${BASH_REMATCH[2]}.g${BASH_REMATCH[3]}"
+    stem="Folio-Preview-$version-arm64"
+    assets=("$stem.zip" "$stem.dmg" "$stem.dmg.sha256" appcast.xml)
+    prerelease=true
+    ;;
+  stable)
+    test "$tag" = "v$version"
+    current_build="$(scripts/macos-version "$version")"
+    assets=("Folio-$version.zip" "Folio-$version.dmg" appcast.xml)
+    prerelease=false
+    ;;
+  *) echo "Unsupported release channel." >&2; exit 1 ;;
+esac
 mode="${3:-promote}"
 id="${2:?Supply the staged release ID}"
 [[ "$id" =~ ^[0-9]+$ ]]
@@ -13,11 +30,13 @@ metadata=$(gh api "$repo")
 jq -e '.private == false' <<< "$metadata" > /dev/null
 
 receipt=$(gh api "$repo/releases/$id")
-jq -e --arg tag "v$version" '.tag_name == $tag and .prerelease == false' <<< "$receipt" > /dev/null
+jq -e --arg tag "$tag" --argjson prerelease "$prerelease" \
+  '.tag_name == $tag and (.prerelease == $prerelease or ($prerelease and .draft == true and .prerelease == false))' \
+  <<< "$receipt" > /dev/null
 verification=$(mktemp -d "${TMPDIR:-/tmp}/folio-verify.XXXXXX")
 trap 'rm -rf "$verification"' EXIT
 [[ "$mode" == promote || "$mode" == resume ]]
-for name in "Folio-$version.zip" "Folio-$version.dmg" appcast.xml; do
+for name in "${assets[@]}"; do
   asset=$(jq -ce --arg name "$name" '.assets[] | select(.name == $name)' <<< "$receipt")
   asset_id=$(jq -er .id <<< "$asset")
   digest=$(jq -er .digest <<< "$asset")
@@ -28,15 +47,20 @@ for name in "Folio-$version.zip" "Folio-$version.dmg" appcast.xml; do
   fi
 done
 if jq -e '.draft == true' <<< "$receipt" > /dev/null; then
-  gh api "$repo/releases/$id" --method PATCH -F draft=false -f make_latest=false --jq .html_url
+  gh api "$repo/releases/$id" --method PATCH -F draft=false -F prerelease="$prerelease" -f make_latest=false --jq .html_url
 fi
-gh api "$repo/releases/$id" | jq -e '.draft == false and .immutable == true' > /dev/null
-for name in "Folio-$version.zip" "Folio-$version.dmg" appcast.xml; do
+published=$(gh api "$repo/releases/$id")
+jq -e --argjson prerelease "$prerelease" \
+  '.draft == false and .prerelease == $prerelease and .immutable == true' <<< "$published" > /dev/null
+for name in "${assets[@]}"; do
   curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
     --proto '=https' --proto-redir '=https' \
-    "https://github.com/$FOLIO_RELEASE_REPOSITORY/releases/download/v$version/$name" -o "$verification/public"
-  cmp "$verification/$name" "$verification/public"
+    "https://github.com/$FOLIO_RELEASE_REPOSITORY/releases/download/$tag/$name" -o "$verification/download"
+  cmp "$verification/$name" "$verification/download"
 done
+if [[ "$channel" == timestamp ]]; then
+  exit 0
+fi
 if latest=$(gh api "$repo/releases/latest" 2>&1); then
   latest_version=$(jq -er '.tag_name | select(startswith("v")) | ltrimstr("v")' <<< "$latest")
   latest_build="$(scripts/macos-version "$latest_version")"
@@ -57,6 +81,8 @@ elif [[ "$latest" != *"HTTP 404"* ]]; then
   exit 1
 fi
 gh api "$repo/releases/$id" --method PATCH -f make_latest=true --jq .html_url
+latest=$(gh api "$repo/releases/latest")
+jq -e --argjson id "$id" '.id == $id and .immutable == true' <<< "$latest" > /dev/null
 curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
   --proto '=https' --proto-redir '=https' \
   "https://github.com/$FOLIO_RELEASE_REPOSITORY/releases/latest/download/appcast.xml" -o "$verification/latest.xml"

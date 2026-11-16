@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
-    <key>CFBundleDisplayName</key><string>Folio Preview</string>
+    <key>CFBundleDisplayName</key><string>Folio</string>
     <key>CFBundleExecutable</key><string>Folio</string>
     <key>CFBundleIdentifier</key><string>org.popomore.folio.preview</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-    <key>CFBundleName</key><string>Folio Preview</string>
+    <key>CFBundleName</key><string>Folio</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleIconFile</key><string>Folio</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
@@ -78,6 +78,55 @@
                 <key>public.filename-extension</key>
                 <array><string>rs</string><string>jsx</string><string>go</string><string>kt</string><string>scss</string></array>
             </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.popomore.folio.lua-source</string>
+            <key>UTTypeDescription</key><string>Lua Source</string>
+            <key>UTTypeConformsTo</key><array><string>public.source-code</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>lua</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.popomore.folio.cs-source</string>
+            <key>UTTypeDescription</key><string>C# Source</string>
+            <key>UTTypeConformsTo</key><array><string>public.source-code</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>cs</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.popomore.folio.dart-source</string>
+            <key>UTTypeDescription</key><string>Dart Source</string>
+            <key>UTTypeConformsTo</key><array><string>public.source-code</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>dart</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.popomore.folio.zig-source</string>
+            <key>UTTypeDescription</key><string>Zig Source</string>
+            <key>UTTypeConformsTo</key><array><string>public.source-code</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>zig</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.popomore.folio.fish-source</string>
+            <key>UTTypeDescription</key><string>Fish Source</string>
+            <key>UTTypeConformsTo</key><array><string>public.source-code</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>fish</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.popomore.folio.vue-source</string>
+            <key>UTTypeDescription</key><string>Vue Source</string>
+            <key>UTTypeConformsTo</key><array><string>public.source-code</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>vue</string></array></dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>org.popomore.folio.svelte-source</string>
+            <key>UTTypeDescription</key><string>Svelte Source</string>
+            <key>UTTypeConformsTo</key><array><string>public.source-code</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict><key>public.filename-extension</key><array><string>svelte</string></array></dict>
         </dict>
         <dict>
             <key>UTTypeIdentifier</key><string>com.microsoft.typescript</string>

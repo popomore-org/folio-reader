@@ -2,6 +2,7 @@
 
 - Write commit subjects and bodies, and pull request titles and descriptions, in English.
 - Open a pull request against `main`. Include the reason for the change and the checks that cover it.
+- Maintainers run the organization’s Meta merge check before merging and use the Meta merge command after explicit merge approval.
 - Keep user-facing UI strings and source comments in English. Put translations in locale resources when localization is available.
 
 # macOS

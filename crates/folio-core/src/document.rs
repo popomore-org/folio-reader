@@ -1,5 +1,5 @@
-use crate::Error;
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd, html};
+use crate::{Error, syntax};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd, html};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::HashSet, path::Path};
@@ -60,6 +60,7 @@ impl FileKind {
             {
                 Self::Text
             }
+            _ if syntax::for_file(path).is_some() => Self::Text,
             _ => Self::Other,
         }
     }
@@ -127,7 +128,11 @@ fn text_preview(kind: FileKind, path: &Path, source: &str) -> Result<Option<Prev
         FileKind::Markdown => render_markdown(source),
         FileKind::Html => Preview::from_html(sanitize_html(source)),
         FileKind::Text => {
-            Preview::from_html(format!("<pre class=\"plain\">{}</pre>", escape(source)))
+            let html = syntax::html_for_file(path, source).map_or_else(
+                || format!("<pre class=\"plain\">{}</pre>", escape(source)),
+                |code| format!("<pre class=\"plain\"><code>{code}</code></pre>"),
+            );
+            Preview::from_html(html)
         }
         FileKind::Mermaid => diagram("mermaid", source),
         FileKind::Vega => diagram("vega-lite", source),
@@ -181,8 +186,42 @@ pub fn render_markdown(source: &str) -> Preview {
     let mut headings = Vec::new();
     let mut current: Option<(usize, HeadingLevel, String)> = None;
     let mut used = HashSet::new();
+    let mut code_block = None;
+    let mut highlight_budget = syntax::MAX_HIGHLIGHT_BYTES;
+    let mut line_budget = syntax::MAX_NUMBERED_LINES;
     for event in Parser::new_ext(source, options) {
         match &event {
+            Event::Start(Tag::CodeBlock(kind)) => {
+                let language = match kind {
+                    CodeBlockKind::Fenced(info) => info.split_whitespace().next().unwrap_or(""),
+                    CodeBlockKind::Indented => "",
+                };
+                if !matches!(language, "mermaid" | "vega-lite") {
+                    let grammar = (highlight_budget > 0)
+                        .then(|| syntax::for_token(language))
+                        .flatten();
+                    if line_budget > 0 || grammar.is_some() {
+                        code_block = Some((events.len(), grammar));
+                    }
+                }
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                if let Some((start, grammar)) = code_block.take() {
+                    let fragments = events[start + 1..].iter().filter_map(|event| match event {
+                        Event::Text(text) => Some(text.as_ref()),
+                        _ => None,
+                    });
+                    let source = fragments.collect::<String>();
+                    let grammar = grammar.filter(|_| source.len() <= highlight_budget);
+                    if grammar.is_some() {
+                        highlight_budget -= source.len();
+                    }
+                    if let Some(code) = syntax::html(grammar, &source, &mut line_budget, false) {
+                        events.truncate(start + 1);
+                        events.push(Event::Html(code.into()));
+                    }
+                }
+            }
             Event::Start(Tag::Heading { level, .. }) => {
                 current = Some((events.len(), *level, String::new()));
             }
@@ -257,6 +296,7 @@ fn heading_id(title: &str, used: &mut HashSet<String>) -> String {
 pub fn sanitize_html(source: &str) -> String {
     ammonia::Builder::default()
         .add_generic_attributes(["id", "class", "title", "lang", "dir"])
+        .add_tag_attributes("span", ["aria-hidden"])
         .add_tags(["input", "details", "summary"])
         .add_tag_attributes("input", ["type", "disabled", "checked"])
         .add_tag_attribute_values("input", "type", ["checkbox"])
@@ -307,7 +347,7 @@ fn table(source: &str, is_tsv: bool) -> Result<Preview, Error> {
     Ok(Preview::from_html(html))
 }
 
-fn escape(value: &str) -> String {
+pub(crate) fn escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")

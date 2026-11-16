@@ -80,38 +80,109 @@ struct RichText: NSViewRepresentable {
 
 struct SourceEditor: NSViewRepresentable {
     @Binding var text: String
+    let name: String
+    let theme: FolioTheme
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSTextView.scrollableTextView()
-        if let editor = scroll.documentView as? NSTextView {
-            editor.delegate = context.coordinator
-            editor.string = text
-            editor.isRichText = false
-            editor.allowsUndo = true
-            editor.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
-            editor.textContainerInset = NSSize(width: 24, height: 26)
-            editor.isAutomaticQuoteSubstitutionEnabled = false
-            editor.isAutomaticDashSubstitutionEnabled = false
-            editor.isAutomaticTextReplacementEnabled = false
-            editor.setAccessibilityLabel("Document Source")
-            DispatchQueue.main.async { editor.window?.makeFirstResponder(editor) }
-        }
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        let editor = SourceTextView(frame: scroll.contentView.bounds)
+        scroll.documentView = editor
+        editor.minSize = .zero
+        editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        editor.isVerticallyResizable = true
+        editor.autoresizingMask = [.width]
+        editor.textContainer?.widthTracksTextView = true
+        editor.delegate = context.coordinator
+        editor.isRichText = false
+        editor.allowsUndo = true
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = 24
+        editor.defaultParagraphStyle = paragraph
+        editor.font = SourceEditorStyle.font(size: 15)
+        editor.textContainerInset = NSSize(width: 8, height: 12)
+        editor.applyStyle(theme)
+        editor.string = text
+        editor.isAutomaticQuoteSubstitutionEnabled = false
+        editor.isAutomaticDashSubstitutionEnabled = false
+        editor.isAutomaticTextReplacementEnabled = false
+        editor.setAccessibilityLabel("Document Source")
+        scroll.hasVerticalRuler = true
+        scroll.verticalRulerView = SourceLineRuler(scrollView: scroll, editor: editor)
+        scroll.rulersVisible = true
+        context.coordinator.highlight(editor, immediately: true)
+        DispatchQueue.main.async { editor.window?.makeFirstResponder(editor) }
         return scroll
     }
 
     func updateNSView(_ view: NSScrollView, context: Context) {
-        context.coordinator.owner = self
-        if let editor = view.documentView as? NSTextView, editor.string != text { editor.string = text }
+        let coordinator = context.coordinator
+        let styleChanged = coordinator.owner.theme != theme
+        let refreshColors = styleChanged || coordinator.owner.name != name
+        coordinator.owner = self
+        guard let editor = view.documentView as? SourceTextView else { return }
+        if styleChanged { editor.applyStyle(theme) }
+        if editor.string != text {
+            editor.string = text
+            (view.verticalRulerView as? SourceLineRuler)?.refreshLineStarts()
+            coordinator.highlight(editor, immediately: true)
+        } else if refreshColors {
+            coordinator.highlight(editor, immediately: true)
+        }
+    }
+
+    static func dismantleNSView(_ view: NSScrollView, coordinator: Coordinator) {
+        coordinator.highlightTask?.cancel()
     }
 
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var owner: SourceEditor
+        var highlightTask: Task<Void, Never>?
         init(_ owner: SourceEditor) { self.owner = owner }
+
         func textDidChange(_ notification: Notification) {
-            if let editor = notification.object as? NSTextView { owner.text = editor.string }
+            guard let editor = notification.object as? SourceTextView else { return }
+            owner.text = editor.string
+            (editor.enclosingScrollView?.verticalRulerView as? SourceLineRuler)?.refreshLineStarts()
+            highlight(editor)
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            (notification.object as? SourceTextView)?.refreshActiveLine()
+        }
+
+        func highlight(_ editor: SourceTextView, immediately: Bool = false) {
+            highlightTask?.cancel()
+            let source = editor.string
+            let name = owner.name
+            // Match the core's input limit before serializing a draft across the bridge.
+            guard !source.isEmpty, source.utf8.count <= 128 * 1024 else {
+                apply([], to: editor)
+                return
+            }
+            highlightTask = Task { [weak self, weak editor] in
+                if !immediately {
+                    do { try await Task.sleep(for: .milliseconds(160)) } catch { return }
+                }
+                let spans = await Task.detached(priority: .userInitiated) {
+                    (try? Core.sourceHighlights(for: name, source: source)) ?? []
+                }.value
+                guard !Task.isCancelled, let self, let editor, editor.string == source, !editor.hasMarkedText() else { return }
+                apply(spans, to: editor)
+            }
+        }
+
+        private func apply(_ spans: [SourceHighlight], to editor: SourceTextView) {
+            guard let layout = editor.layoutManager, let length = editor.textStorage?.length, length > 0 else { return }
+            layout.removeTemporaryAttribute(.foregroundColor, forCharacterRange: NSRange(location: 0, length: length))
+            for span in spans where span.start >= 0 && span.end > span.start && span.end <= length {
+                layout.addTemporaryAttribute(.foregroundColor, value: editor.style.color(for: span.token),
+                                             forCharacterRange: NSRange(location: span.start, length: span.end - span.start))
+            }
         }
     }
 }

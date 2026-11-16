@@ -3,6 +3,7 @@
 mod document;
 #[cfg(feature = "git")]
 mod history;
+mod syntax;
 mod workspace;
 
 pub use document::{
@@ -11,6 +12,7 @@ pub use document::{
 };
 #[cfg(feature = "git")]
 pub use history::{Commit, GitChange, GitChanges, GitFile, Patch};
+pub use syntax::{SourceHighlight, SyntaxToken, highlight_source};
 pub use workspace::{Entry, Workspace};
 
 #[derive(Debug, thiserror::Error)]

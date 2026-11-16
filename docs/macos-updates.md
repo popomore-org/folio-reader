@@ -26,3 +26,15 @@ Configure the following in the `folio-macos-release` environment:
 | `FOLIO_APPLE_NOTARY_KEY`, `FOLIO_APPLE_NOTARY_KEY_ID`, `FOLIO_APPLE_NOTARY_ISSUER` | Apple notarization credentials |
 
 The job signs and notarizes the app and DMG, stages the packages in a release draft, verifies the stored bytes, and checks the public download URLs. Re-run the original workflow if publication stops partway so the job can reuse the retained signed packages. If those artifacts have expired, recover the exact packages before proceeding.
+
+## Automatic previews
+
+A successful `main` CI run creates a preview tag when the release paths change.
+Folio derives the tag from the base version in `.release/units/folio.json`, the
+commit timestamp, and the short SHA. The workflow token creates the tag and
+dispatches the release workflow on that exact ref. Preview releases remain
+prereleases and use their own Sparkle key, app identity, and ad hoc signature.
+
+Set the corresponding Sparkle variable and secret in `folio-macos-preview`.
+Public previews check GitHub Releases without a token. The original
+`preview-v0.1.0` package requires a manual upgrade to a signed-update preview.

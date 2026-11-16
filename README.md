@@ -6,6 +6,7 @@ Folio is an open-source macOS reader for local project files. Browse saved folde
 
 - **Read local files.** Preview Markdown, text, static HTML, RTF, PDF, images, audio, and video. View CSV and TSV as tables and render Mermaid or Vega-Lite diagrams.
 - **Keep related files together.** Save multiple folders, open tabs and split panes, jump to Markdown headings, and inspect Git history and diffs.
+- **Customize reading.** Choose a light or dark appearance and edit the JSON palettes in **Settings → Appearance → Themes**.
 - **Edit in place.** Switch between reading, source, and source with live preview. Use Command-S to save.
 - **Preview from Finder or Raycast.** Press Space in Finder for Quick Look, or use the bundled CLI to open a floating Folio preview.
 
@@ -14,6 +15,14 @@ Folio is an open-source macOS reader for local project files. Browse saved folde
 Folio builds for Apple Silicon and requires macOS 14 or later. Download a build from [GitHub Releases](https://github.com/popomore-org/folio-reader/releases), open the DMG, and drag the app to Applications. Releases marked **Pre-release** are preview builds.
 
 Open Folio once to register its Finder extension. Manage it under **System Settings → General → Login Items & Extensions → Quick Look**. macOS chooses the provider when multiple apps support the same file type.
+
+## Themes
+
+In **Settings → Appearance → Themes**, choose **Open Theme Folder** to find
+[folio-light.json](apps/macos/Themes/folio-light.json) and
+[folio-dark.json](apps/macos/Themes/folio-dark.json). Edit either file and choose
+**Reload Themes**. Omitted colors inherit the defaults. Finder Quick Look uses
+the bundled colors.
 
 ## Command line
 
@@ -74,7 +83,7 @@ The caller grants access to a workspace and decides how to present its files. Th
 
 Open an [issue](https://github.com/popomore-org/folio-reader/issues) for a bug or feature request. Include your macOS version, Folio version, and a sample file you can share when the issue depends on specific file content. Send changes through pull requests. Use English for commit messages and pull request titles and descriptions. [Contributor instructions](AGENTS.md)
 
-[Reader design and references (中文)](docs/reader-design.md) · [macOS release and update guide](docs/macos-updates.md)
+[macOS release and update guide](docs/macos-updates.md)
 
 ## License
 

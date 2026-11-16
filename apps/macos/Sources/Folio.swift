@@ -10,19 +10,23 @@ struct Folio: App {
     @NSApplicationDelegateAdaptor(FolioDelegate.self) private var delegate
     @StateObject private var model = ReaderModel()
     @StateObject private var updates = FolioUpdates()
+    @StateObject private var settings = SettingsNavigation()
     @FocusedValue(\.quickPreviewActive) private var quickPreviewActive
 
     private var workspaceFocused: Bool { quickPreviewActive != true }
 
     var body: some Scene {
         Window("Folio", id: "workspace") {
-            WorkspaceSceneContent(delegate: delegate, model: model, updates: updates)
+            WorkspaceSceneContent(delegate: delegate, model: model, updates: updates, settings: settings)
         }
         .defaultSize(width: 1130, height: 760)
         .commands {
             CommandGroup(after: .appInfo) {
-                Button("Check for Updates…", action: updates.openUpdateSettings)
-                    .disabled(!updates.isConfigured)
+                Button("Check for Updates…") {
+                    settings.open(.updates)
+                    updates.check()
+                }
+                .disabled(!updates.isConfigured)
             }
             CommandGroup(replacing: .newItem) {
                 Button("Open…") { model.choose() }.keyboardShortcut("o").disabled(!workspaceFocused)
@@ -60,7 +64,7 @@ struct Folio: App {
                     model.inspector = false
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift]).disabled(!workspaceFocused)
-                Button(model.split ? "Merge Panes" : "Split Right", action: model.toggleSplit)
+                Button(model.split ? "Merge Panes" : "Split Pane", action: model.toggleSplit)
                     .keyboardShortcut("\\").disabled(!workspaceFocused)
                 Button("Next Tab") { model.cycle(1) }.keyboardShortcut(.tab, modifiers: [.control]).disabled(!workspaceFocused)
                 Button("Previous Tab") { model.cycle(-1) }.keyboardShortcut(.tab, modifiers: [.control, .shift]).disabled(!workspaceFocused)
@@ -82,7 +86,7 @@ struct Folio: App {
         .commandsRemoved()
 
         Settings {
-            ReaderSettings(model: model, updates: updates)
+            ReaderSettings(model: model, updates: updates, navigation: settings)
                 .preferredColorScheme(model.appearance.workspace.colorScheme)
         }
     }
@@ -120,22 +124,29 @@ private struct WorkspaceSceneContent: View {
     let delegate: FolioDelegate
     @ObservedObject var model: ReaderModel
     let updates: FolioUpdates
+    let settings: SettingsNavigation
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        ReaderWindow(updates: updates, model: model)
+        ReaderWindow(model: model)
             .preferredColorScheme(model.appearance.workspace.colorScheme)
-            .frame(minWidth: 910, minHeight: 500)
+            .frame(minWidth: 660, minHeight: 420)
             .onAppear {
                 delegate.model = model
                 delegate.updates = updates
                 delegate.registerWorkspace(model: model, openWindow: openWindow)
                 updates.start(model: model)
-                DispatchQueue.main.async { updates.offerUpdateChecks(on: NSApp.mainWindow) }
+                settings.openSettings = openSettings
                 model.openURLs(delegate.pending)
                 delegate.pending = []
             }
-            .background(WindowOwner(model: model, updates: updates))
+            .background(WindowOwner(model: model) { window in
+                settings.openSettings = openSettings
+                if !settings.presentQuickLookSetupIfNeeded() {
+                    updates.offerUpdateChecks(on: window)
+                }
+            })
     }
 }
 
@@ -164,25 +175,27 @@ private struct PreviewSceneContent: View {
 
 struct WindowOwner: NSViewRepresentable {
     let model: ReaderModel
-    let updates: FolioUpdates
+    let onReady: (NSWindow) -> Void
 
     func makeNSView(context: Context) -> Owner {
-        Owner(model: model, updates: updates)
+        Owner(model: model, onReady: onReady)
     }
 
-    func updateNSView(_ view: Owner, context: Context) {}
+    func updateNSView(_ view: Owner, context: Context) {
+        view.onReady = onReady
+    }
 
     @MainActor
     final class Owner: NSView, NSWindowDelegate {
         weak var model: ReaderModel?
-        weak var updates: FolioUpdates?
+        var onReady: (NSWindow) -> Void
         nonisolated(unsafe) weak var previous: (any NSWindowDelegate)?
         private var titleBarMonitor: Any?
         private var titleBarClickFrame: NSRect?
 
-        init(model: ReaderModel, updates: FolioUpdates) {
+        init(model: ReaderModel, onReady: @escaping (NSWindow) -> Void) {
             self.model = model
-            self.updates = updates
+            self.onReady = onReady
             super.init(frame: .zero)
         }
 
@@ -207,7 +220,16 @@ struct WindowOwner: NSViewRepresentable {
             window.backgroundColor = NSColor(WorkspaceStyle.surface)
             if InstanceMode.isSeparate { window.isRestorable = false }
             window.tabbingMode = .disallowed
-            DispatchQueue.main.async { [weak self, weak window] in self?.updates?.offerUpdateChecks(on: window) }
+            DispatchQueue.main.async { [weak self, weak window] in
+                if let window, window.isKeyWindow { self?.onReady(window) }
+            }
+        }
+
+        func windowDidBecomeKey(_ notification: Notification) {
+            previous?.windowDidBecomeKey?(notification)
+            DispatchQueue.main.async { [weak self] in
+                if let self, let window, window.isKeyWindow { onReady(window) }
+            }
         }
 
         private func handleTitleBarClick(_ event: NSEvent) -> NSEvent? {

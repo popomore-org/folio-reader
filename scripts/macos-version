@@ -6,4 +6,11 @@ match = re.fullmatch(r"(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)", s
 if not match or int(match[1]) == 9999:
     sys.exit("Expected a release version with major 0–9998 and minor and patch 0–99.")
 major, minor, patch = map(int, match.groups())
-print(f"{major + 1}.{minor}.{patch}")
+if len(sys.argv) == 3:
+    suffix = re.fullmatch(r"([1-9][0-9]{0,11})-([0-9a-f]{7})", sys.argv[2])
+    if not suffix:
+        sys.exit("Expected a preview suffix with a Unix timestamp and seven lowercase SHA digits.")
+    timestamp, sha = suffix.groups()
+    print(f"{timestamp}.{int(sha, 16)}")
+else:
+    print(f"{major + 1}.{minor}.{patch}")

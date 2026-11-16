@@ -3,6 +3,7 @@ import SwiftUI
 
 struct FolderSidebar: View {
     @ObservedObject var model: ReaderModel
+    let width: CGFloat
     @State private var keyboardFocus = false
     @State private var cursor: FileLocation?
 
@@ -74,7 +75,7 @@ struct FolderSidebar: View {
         if item.message {
             Text(item.title)
                 .font(.caption).foregroundStyle(.secondary)
-                .padding(.leading, 21 + CGFloat(min(item.depth, 10) * 12))
+                .padding(.leading, 21 + indentation(for: item.depth))
                 .padding(.vertical, 3)
         } else if item.directory {
             directory(item)
@@ -199,7 +200,7 @@ struct FolderSidebar: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
         .help(item.path)
         .contextMenu {
-            Button("Open in \(model.focusedPane.other.label) Pane") { model.open(location, in: model.focusedPane.other) }
+            Button("Open in Other Pane") { model.open(location, in: model.focusedPane.other) }
             if let url = location.url {
                 OpenWithMenu(file: url, model: model)
                 Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
@@ -222,10 +223,14 @@ struct FolderSidebar: View {
         }
         .font(.system(size: 12))
         .lineLimit(1).truncationMode(.middle)
-        .padding(.leading, 5 + CGFloat(min(depth, 10) * 12))
+        .padding(.leading, 5 + indentation(for: depth))
         .padding(.trailing, 4)
         .frame(minHeight: 23)
         .contentShape(Rectangle())
+    }
+
+    private func indentation(for depth: Int) -> CGFloat {
+        min(CGFloat(min(depth, 10)) * 12, max(0, width - 96))
     }
 }
 

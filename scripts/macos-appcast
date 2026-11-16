@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import base64
+import os
 from pathlib import Path
 from subprocess import check_output, run
 import sys
@@ -25,10 +26,13 @@ rss = ET.Element("rss", version="2.0")
 channel = ET.SubElement(rss, "channel")
 ET.SubElement(channel, "title").text = "Folio"
 item = ET.SubElement(channel, "item")
-ET.SubElement(item, "title").text = f"Folio {version}"
+suffix = os.environ.get("FOLIO_PREVIEW_SUFFIX")
+version_arguments = [version, suffix] if suffix else [version]
+display_version = version + "-" + suffix.replace("-", ".g") if suffix else version
+ET.SubElement(item, "title").text = f"Folio {display_version}"
 ET.SubElement(item, "description", {sparkle_tag("format"): "plain-text"}).text = Path(notes).read_text().strip()
-ET.SubElement(item, sparkle_tag("version")).text = check_output(["scripts/macos-version", version], text=True).strip()
-ET.SubElement(item, sparkle_tag("shortVersionString")).text = version
+ET.SubElement(item, sparkle_tag("version")).text = check_output(["scripts/macos-version", *version_arguments], text=True).strip()
+ET.SubElement(item, sparkle_tag("shortVersionString")).text = display_version
 ET.SubElement(item, sparkle_tag("minimumSystemVersion")).text = "14.0"
 ET.SubElement(item, sparkle_tag("hardwareRequirements")).text = "arm64"
 ET.SubElement(item, "enclosure", {

@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: folio-ci-${{ github.ref }}
+  group: folio-ci-${{ github.event_name == 'push' && github.run_id || github.ref }}
   cancel-in-progress: true
 jobs:
   rust:
@@ -45,13 +45,33 @@ jobs:
           rustup show active-toolchain
           node --version
           app="$(scripts/build-macos)"
+          info="$app/Contents/Info.plist"
           preview="$app/Contents/PlugIns/FolioQuickLook.appex/Contents/Info.plist"
+          test "${app##*/}" = Folio.app
+          test "$(plutil -extract CFBundleDisplayName raw "$info")" = Folio
+          test "$(plutil -extract CFBundleDisplayName raw "$preview")" = Folio
           test "$(plutil -extract CFBundleIdentifier raw "$preview")" = org.popomore.folio.preview.quicklook
           test "$(plutil -extract NSExtension.NSExtensionPointIdentifier raw "$preview")" = com.apple.quicklook.preview
           scripts/check-quicklook "$app"
+          xcrun swiftc -swift-version 6 -warnings-as-errors \
+            apps/macos/Sources/WorkspaceLayout.swift apps/macos/LayoutTests/WorkspaceLayoutCheck.swift \
+            -o "$RUNNER_TEMP/folio-layout-check"
+          "$RUNNER_TEMP/folio-layout-check"
+          xcrun swiftc -swift-version 6 -warnings-as-errors -parse-as-library \
+            apps/macos/Sources/QuickLookRegistry.swift apps/macos/QuickLookTests/RegistrationCheck.swift \
+            -o "$RUNNER_TEMP/folio-registration-check"
+          "$RUNNER_TEMP/folio-registration-check"
+          xcrun swiftc -swift-version 6 -warnings-as-errors -parse-as-library \
+            apps/macos/Sources/{PrivateUpdateChannel,LocalUpdateFeed}.swift apps/macos/UpdateTests/PrivateUpdateCheck.swift \
+            -o "$RUNNER_TEMP/folio-private-update-check"
+          "$RUNNER_TEMP/folio-private-update-check"
+          xcrun swiftc -swift-version 6 -warnings-as-errors -parse-as-library \
+            apps/macos/CLI/Installation.swift apps/macos/CLITests/InstallCheck.swift \
+            -o "$RUNNER_TEMP/folio-install-check"
+          "$RUNNER_TEMP/folio-install-check"
           cli="$app/Contents/Helpers/folio"
           "$cli" --help
-          test "$("$cli" --version)" = "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")"
+          test "$("$cli" --version)" = "$(plutil -extract CFBundleShortVersionString raw "$info")"
           status=0
           "$cli" --unknown || status=$?
           test "$status" -eq 2
@@ -72,3 +92,23 @@ jobs:
     with:
       rust: ${{ needs.rust.result }}
       macos: ${{ needs.macos.result }}
+  tag:
+    name: Tag macOS Preview
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !github.event.repository.private
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag the tested commit and dispatch the preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.before }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: scripts/tag-macos-preview

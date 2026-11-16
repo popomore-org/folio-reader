@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum WorkspaceAppearance: String, CaseIterable, Identifiable {
@@ -15,16 +16,16 @@ enum WorkspaceAppearance: String, CaseIterable, Identifiable {
 
 struct Appearance: Equatable {
     var workspace: WorkspaceAppearance = .system
-    var size = 18.0
+    var size = 16.0
     var width = 700.0
-    var serif = true
+    var serif = false
 
     init() {
         let defaults = UserDefaults.standard
         workspace = WorkspaceAppearance(rawValue: defaults.string(forKey: "workspaceAppearance") ?? "") ?? .system
-        size = min(30, max(13, defaults.object(forKey: "textSize") as? Double ?? 18))
-        width = defaults.object(forKey: "readerWidth") as? Double ?? 700
-        serif = defaults.object(forKey: "serif") as? Bool ?? true
+        size = min(30, max(13, defaults.object(forKey: "textSize") as? Double ?? size))
+        width = defaults.object(forKey: "readerWidth") as? Double ?? width
+        serif = defaults.object(forKey: "serif") as? Bool ?? serif
     }
 
     func persist() {
@@ -36,17 +37,54 @@ struct Appearance: Equatable {
     }
 }
 
+@MainActor
+final class SettingsNavigation: ObservableObject {
+    enum Page: Hashable { case appearance, quickLook, updates }
+
+    @Published var page: Page = .appearance
+    var openSettings: OpenSettingsAction?
+    private var showingQuickLookSetup = false
+    private static let quickLookSetupKey = "folioQuickLookSetupSeen"
+
+    func open(_ page: Page) {
+        self.page = page
+        openSettings?()
+    }
+
+    func presentQuickLookSetupIfNeeded() -> Bool {
+        if showingQuickLookSetup { return true }
+        guard !InstanceMode.isSeparate, openSettings != nil,
+              !UserDefaults.standard.bool(forKey: Self.quickLookSetupKey) else { return false }
+        showingQuickLookSetup = true
+        open(.quickLook)
+        return true
+    }
+
+    func didDisplayQuickLook() {
+        guard !InstanceMode.isSeparate else { return }
+        UserDefaults.standard.set(true, forKey: Self.quickLookSetupKey)
+        showingQuickLookSetup = false
+    }
+}
+
 struct ReaderSettings: View {
     @ObservedObject var model: ReaderModel
     @ObservedObject var updates: FolioUpdates
+    @ObservedObject var navigation: SettingsNavigation
+    @State private var themeMessage: String?
 
     var body: some View {
-        TabView(selection: $updates.settingsPage) {
-            appearance.tabItem { Label("Appearance", systemImage: "textformat") }.tag(FolioUpdates.SettingsPage.appearance)
+        TabView(selection: $navigation.page) {
+            appearance.tabItem { Label("Appearance", systemImage: "textformat") }.tag(SettingsNavigation.Page.appearance)
+            QuickLookSettings(isSelected: navigation.page == .quickLook)
+                .tabItem { Label("Quick Look", systemImage: "eye") }.tag(SettingsNavigation.Page.quickLook)
             UpdateSettings(updates: updates)
-                .tabItem { Label("Updates", systemImage: "arrow.clockwise") }.tag(FolioUpdates.SettingsPage.updates)
+                .tabItem { Label("Updates", systemImage: "arrow.clockwise") }.tag(SettingsNavigation.Page.updates)
         }
         .frame(width: 500, height: 420)
+        .onChange(of: navigation.page, initial: true) { _, page in
+            if page == .quickLook { navigation.didDisplayQuickLook() }
+        }
     }
 
     private var appearance: some View {
@@ -68,17 +106,64 @@ struct ReaderSettings: View {
                     Text("Wide").tag(920.0)
                 }
             }
+            Section("Themes") {
+                HStack {
+                    Button("Open Theme Folder", action: openThemeFolder)
+                    Button("Reload Themes") {
+                        ThemeStore.shared.reload()
+                        themeMessage = ThemeStore.shared.problems.isEmpty ? "Themes reloaded." : nil
+                    }
+                }
+                Text("Edit \(ThemeMode.light.filename) or \(ThemeMode.dark.filename), then reload. Finder uses the bundled themes.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                if let themeMessage { Text(themeMessage).font(.callout) }
+                ForEach(ThemeStore.shared.problems, id: \.self) { problem in
+                    Text(problem).font(.callout).foregroundStyle(.red)
+                }
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private func openThemeFolder() {
+        let themes = ThemeStore.shared
+        do {
+            try themes.prepareDirectory()
+            themeMessage = NSWorkspace.shared.open(themes.directory) ? nil : "Could not open the theme folder."
+        } catch {
+            themeMessage = error.localizedDescription
+        }
     }
 }
 
 
 private struct UpdateSettings: View {
     @ObservedObject var updates: FolioUpdates
+    @State private var githubToken = ""
 
     var body: some View {
         Form {
+            if updates.isConfigured, let repository = updates.privateRepository {
+                Section("GitHub Access") {
+                    LabeledContent("Repository", value: repository)
+                    SecureField("GitHub access token", text: $githubToken)
+                    HStack {
+                        Button("Save Token") {
+                            updates.savePrivateCredential(githubToken)
+                            githubToken = ""
+                        }
+                        .disabled(githubToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        if updates.hasPrivateCredential {
+                            Button("Remove Token") { updates.savePrivateCredential("") }
+                        }
+                    }
+                    .disabled(!updates.canEditPrivateCredential)
+                    Text("Use a read-only token with Contents access to this repository. Folio saves it in the macOS Keychain.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    if let releases = updates.releasesURL { Link("Open Releases", destination: releases) }
+                }
+            }
             Section("Software Update") {
                 LabeledContent("Installed version", value: updates.currentVersion)
                 if updates.isConfigured {
