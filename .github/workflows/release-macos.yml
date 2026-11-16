@@ -108,7 +108,7 @@ jobs:
           test "$FOLIO_RELEASE_REPOSITORY" = "$GITHUB_REPOSITORY"
           gh api "repos/$FOLIO_RELEASE_REPOSITORY" | jq -e '.private == false'
           if [[ "$FOLIO_RELEASE_CHANNEL" == timestamp ]]; then
-            stem="dist/Folio-Preview-$FOLIO_VERSION-arm64"
+            stem="dist/Folio-$FOLIO_VERSION-arm64"
             notes=".release/preview-notes.txt"
             files=$(jq -cn --arg stem "$stem" '[$stem+".zip", $stem+".dmg", $stem+".dmg.sha256", "dist/appcast.xml"]')
           else

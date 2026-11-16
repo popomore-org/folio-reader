@@ -26,7 +26,7 @@ test "$(lipo -archs "$bundle/Contents/MacOS/Folio")" = arm64
 test "$(plutil -extract CFBundleIdentifier raw "$bundle/Contents/Info.plist")" = org.popomore.folio.preview
 scripts/check-quicklook "$bundle"
 
-stem="Folio-Preview-$artifact_version-arm64"
+stem="Folio-$artifact_version-arm64"
 mkdir -p dist "$stage/dmg"
 rm -f "dist/$stem.zip" "dist/$stem.dmg"
 ditto -c -k --keepParent "$bundle" "dist/$stem.zip"
