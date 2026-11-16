@@ -42,6 +42,10 @@ jobs:
           test "$(plutil -extract CFBundleIdentifier raw "$preview")" = org.popomore.folio.preview.quicklook
           test "$(plutil -extract NSExtension.NSExtensionPointIdentifier raw "$preview")" = com.apple.quicklook.preview
           scripts/check-quicklook "$app"
+          xcrun swiftc -swift-version 6 -warnings-as-errors \
+            apps/macos/Sources/WorkspaceLayout.swift apps/macos/LayoutTests/WorkspaceLayoutCheck.swift \
+            -o "$RUNNER_TEMP/folio-layout-check"
+          "$RUNNER_TEMP/folio-layout-check"
           xcrun swiftc -swift-version 6 -warnings-as-errors -parse-as-library \
             apps/macos/Sources/QuickLookRegistry.swift apps/macos/QuickLookTests/RegistrationCheck.swift \
             -o "$RUNNER_TEMP/folio-registration-check"

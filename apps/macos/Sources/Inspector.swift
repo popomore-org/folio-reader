@@ -2,6 +2,7 @@ import SwiftUI
 
 struct Inspector: View {
     let tab: ReaderTab?
+    let width: CGFloat
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -10,7 +11,7 @@ struct Inspector: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .workspaceHeader()
             if let tab {
-                TabOutline(tab: tab)
+                TabOutline(tab: tab, compact: width < 170)
             } else {
                 Text("No headings").foregroundStyle(.secondary).padding(12)
             }
@@ -22,6 +23,7 @@ struct Inspector: View {
 
 private struct TabOutline: View {
     @ObservedObject var tab: ReaderTab
+    let compact: Bool
 
     var body: some View {
         let headings = tab.preview?.headings ?? []
@@ -36,8 +38,8 @@ private struct TabOutline: View {
                         } label: {
                             Text(heading.title)
                                 .font(.system(size: 12, weight: heading.level <= 2 ? .medium : .regular))
-                                .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.leading, CGFloat(max(0, heading.level - 1) * 9))
+                                .lineLimit(compact ? 3 : 2).frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, CGFloat(max(0, heading.level - 1)) * (compact ? 5 : 9))
                                 .padding(.vertical, 5)
                         }
                         .buttonStyle(.plain).help(heading.title).disabled(tab.mode == .source || tab.previewError != nil)

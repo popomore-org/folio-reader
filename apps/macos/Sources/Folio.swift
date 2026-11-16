@@ -64,7 +64,7 @@ struct Folio: App {
                     model.inspector = false
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift]).disabled(!workspaceFocused)
-                Button(model.split ? "Merge Panes" : "Split Right", action: model.toggleSplit)
+                Button(model.split ? "Merge Panes" : "Split Pane", action: model.toggleSplit)
                     .keyboardShortcut("\\").disabled(!workspaceFocused)
                 Button("Next Tab") { model.cycle(1) }.keyboardShortcut(.tab, modifiers: [.control]).disabled(!workspaceFocused)
                 Button("Previous Tab") { model.cycle(-1) }.keyboardShortcut(.tab, modifiers: [.control, .shift]).disabled(!workspaceFocused)
@@ -131,7 +131,7 @@ private struct WorkspaceSceneContent: View {
     var body: some View {
         ReaderWindow(model: model)
             .preferredColorScheme(model.appearance.workspace.colorScheme)
-            .frame(minWidth: 910, minHeight: 500)
+            .frame(minWidth: 660, minHeight: 420)
             .onAppear {
                 delegate.model = model
                 delegate.updates = updates

@@ -11,6 +11,7 @@
   --link: #0969da;
   --text-size: 16px;
   --reading-width: 700px;
+  --reader-gutter: clamp(14px, 4vw, 32px);
   --body-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --code-font: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
@@ -46,11 +47,14 @@
 html { scroll-padding: 24px; }
 body { margin: 0; background: var(--paper); color: var(--ink); }
 article {
-  width: min(calc(100% - 64px), var(--reading-width));
+  width: min(calc(100% - 2 * var(--reader-gutter)), var(--reading-width));
   margin-inline: auto;
-  padding-block: 32px 64px;
+  padding-block: clamp(18px, 4vw, 32px) 64px;
   font: var(--text-size)/1.5 var(--body-font);
   overflow-wrap: break-word;
+}
+article:has(> pre.plain > code), article:has(> .table-scroll) {
+  width: calc(100% - 2 * var(--reader-gutter));
 }
 article > :first-child { margin-top: 0; }
 article > :last-child { margin-bottom: 0; }
@@ -135,6 +139,3 @@ tbody tr:nth-child(even) { background: var(--inset); }
 .diagram svg { max-width: 100%; height: auto; }
 .diagram-error, .preview-note { color: var(--muted); font: .85em/1.5 var(--body-font); }
 [hidden] { display: none !important; }
-@media (max-width: 520px) {
-  article { width: calc(100% - 36px); padding-block-start: 20px; }
-}
