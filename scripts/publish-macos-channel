@@ -27,7 +27,7 @@ mode="${3:-promote}"
 id="${2:?Supply the staged release ID}"
 [[ "$id" =~ ^[0-9]+$ ]]
 metadata=$(gh api "$repo")
-jq -e '.private == true' <<< "$metadata" > /dev/null
+jq -e '.private == false' <<< "$metadata" > /dev/null
 
 receipt=$(gh api "$repo/releases/$id")
 jq -e --arg tag "$tag" --argjson prerelease "$prerelease" \
@@ -53,8 +53,9 @@ published=$(gh api "$repo/releases/$id")
 jq -e --argjson prerelease "$prerelease" \
   '.draft == false and .prerelease == $prerelease and .immutable == true' <<< "$published" > /dev/null
 for name in "${assets[@]}"; do
-  asset_id=$(jq -er --arg name "$name" '.assets[] | select(.name == $name).id' <<< "$published")
-  gh api "$repo/releases/assets/$asset_id" -H 'Accept: application/octet-stream' > "$verification/download"
+  curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
+    --proto '=https' --proto-redir '=https' \
+    "https://github.com/$FOLIO_RELEASE_REPOSITORY/releases/download/$tag/$name" -o "$verification/download"
   cmp "$verification/$name" "$verification/download"
 done
 if [[ "$channel" == timestamp ]]; then
@@ -82,6 +83,7 @@ fi
 gh api "$repo/releases/$id" --method PATCH -f make_latest=true --jq .html_url
 latest=$(gh api "$repo/releases/latest")
 jq -e --argjson id "$id" '.id == $id and .immutable == true' <<< "$latest" > /dev/null
-asset_id=$(jq -er '.assets[] | select(.name == "appcast.xml").id' <<< "$latest")
-gh api "$repo/releases/assets/$asset_id" -H 'Accept: application/octet-stream' > "$verification/latest.xml"
+curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
+  --proto '=https' --proto-redir '=https' \
+  "https://github.com/$FOLIO_RELEASE_REPOSITORY/releases/latest/download/appcast.xml" -o "$verification/latest.xml"
 cmp "$verification/appcast.xml" "$verification/latest.xml"

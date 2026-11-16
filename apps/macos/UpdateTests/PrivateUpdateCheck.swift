@@ -8,8 +8,8 @@ final class ReleaseFixture: URLProtocol, @unchecked Sendable {
         let client = self.client!
         let url = request.url!
         let token = request.value(forHTTPHeaderField: "Authorization")
-        let status = token == "Bearer fixture_token" ? 200 : 401
-        precondition(url.host == "api.github.com")
+        let status = token == nil || token == "Bearer fixture_token" ? 200 : 401
+        precondition(url.host == "api.github.com" || url.host == "github.com")
         let body: String
         if url.lastPathComponent == "latest" {
             precondition(request.value(forHTTPHeaderField: "Accept") == "application/vnd.github+json")
@@ -31,6 +31,10 @@ final class ReleaseFixture: URLProtocol, @unchecked Sendable {
                    "assets":[{"id":23,"name":"appcast.xml"},{"id":24,"name":"Folio-Preview-0.1.1-1793840000.gabcdef0-arm64.zip"}]}
                 ]
                 """
+        } else if url.host == "github.com" {
+            precondition(token == nil)
+            precondition(url.path == "/example/folio/releases/download/v0.1.1.1793840000-abcdef1/appcast.xml")
+            body = "<rss />"
         } else {
             precondition(["/repos/example/folio/releases/assets/11", "/repos/example/folio/releases/assets/21"].contains(url.path))
             precondition(request.value(forHTTPHeaderField: "Accept") == "application/octet-stream")
@@ -76,6 +80,10 @@ struct PrivateUpdateCheck {
         let previewArchive = "https://github.com/example/folio/releases/download/v0.1.1.1793840000-abcdef1/Folio-Preview-0.1.1-1793840000.gabcdef1-arm64.zip"
         precondition(previewSnapshot.archiveURL.absoluteString == previewArchive)
         precondition(preview.archiveRequest(previewSnapshot, token: "fixture_token").url?.lastPathComponent == "22")
+        let publicPreview = try await preview.latest(token: nil, using: session)
+        let publicArchive = preview.archiveRequest(publicPreview, token: nil)
+        precondition(publicArchive.url?.absoluteString == previewArchive)
+        precondition(publicArchive.value(forHTTPHeaderField: "Authorization") == nil)
 
         var redirect = URLRequest(url: URL(string: "https://release-assets.githubusercontent.com/temporary-file")!)
         redirect.setValue("Bearer fixture_token", forHTTPHeaderField: "Authorization")

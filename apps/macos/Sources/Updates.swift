@@ -31,8 +31,10 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     let currentVersion = Bundle.main.object(forInfoDictionaryKey: "FolioPreviewVersion") as? String ??
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     private let feed = (Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String).flatMap { URL(string: $0) }
+    private let requiresGitHubCredential = Bundle.main.object(forInfoDictionaryKey: "FolioPrivateUpdates") as? Bool == true
     private let privateChannel: PrivateUpdateChannel? = {
-        guard Bundle.main.object(forInfoDictionaryKey: "FolioPrivateUpdates") as? Bool == true,
+        guard Bundle.main.object(forInfoDictionaryKey: "FolioPrivateUpdates") as? Bool == true ||
+                Bundle.main.object(forInfoDictionaryKey: "FolioPublicPreviewUpdates") as? Bool == true,
               let feed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
               let url = URL(string: feed), let id = Bundle.main.bundleIdentifier else { return nil }
         return PrivateUpdateChannel(feed: url, bundleID: id)
@@ -68,13 +70,13 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     private static let maximumArchiveSize = 64 * 1024 * 1024
 
     var isConfigured: Bool { feed != nil && !InstanceMode.isSeparate }
-    var privateRepository: String? { privateChannel?.repository }
+    var privateRepository: String? { requiresGitHubCredential ? privateChannel?.repository : nil }
     var releasesURL: URL? { privateChannel?.releasesURL }
     var canEditPrivateCredential: Bool { !isWorking && updater?.sessionInProgress != true }
     var version: String? { offer?.version }
     var notes: String { offer?.notes ?? "" }
     var canCheck: Bool {
-        updater != nil && authorized == nil && (privateChannel == nil || hasPrivateCredential) &&
+        updater != nil && authorized == nil && (!requiresGitHubCredential || hasPrivateCredential) &&
             [.idle, .offered, .downloaded, .waiting, .failed].contains(phase)
     }
     var canDownload: Bool { phase == .offered || (phase == .failed && offer != nil && archive == nil) }
@@ -94,10 +96,12 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
         guard isConfigured, updater == nil else { return }
         let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: self, delegate: self)
         if let privateChannel {
-            privateToken = privateChannel.token()
             updater.automaticallyChecksForUpdates = false
-            if !hasPrivateCredential {
-                set(.idle, "Add GitHub access to check for updates.")
+            if requiresGitHubCredential {
+                privateToken = privateChannel.token()
+                if !hasPrivateCredential {
+                    set(.idle, "Add GitHub access to check for updates.")
+                }
             }
         }
         do {
@@ -120,7 +124,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     }
 
     func offerUpdateChecks(on window: NSWindow?) {
-        guard updater != nil, (privateChannel == nil || hasPrivateCredential), let window,
+        guard updater != nil, (!requiresGitHubCredential || hasPrivateCredential), let window,
               !presentingConsent, !defaults.bool(forKey: Self.consentKey) else { return }
         presentingConsent = true
         let alert = NSAlert()
@@ -146,7 +150,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     }
 
     func savePrivateCredential(_ value: String) {
-        guard let privateChannel, canEditPrivateCredential else { return }
+        guard requiresGitHubCredential, let privateChannel, canEditPrivateCredential else { return }
         let token = value.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             try privateChannel.storeToken(token)
@@ -179,7 +183,7 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
     }
 
     private func checkPrivateUpdates(userInitiated: Bool) {
-        guard let privateChannel, let privateToken, privateCheck == nil else { return }
+        guard let privateChannel, privateCheck == nil, !requiresGitHubCredential || hasPrivateCredential else { return }
         defaults.set(Date(), forKey: Self.privateLastCheckKey)
         set(.checking, "Checking for updates…")
         privateCheck = Task {
@@ -212,7 +216,8 @@ final class FolioUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUse
         guard canDownload, let offer, let key else { return }
         let request: URLRequest
         if let privateChannel {
-            guard let privateSnapshot, privateSnapshot.archiveURL == offer.url, let privateToken else { return }
+            guard let privateSnapshot, privateSnapshot.archiveURL == offer.url,
+                  !requiresGitHubCredential || hasPrivateCredential else { return }
             request = privateChannel.archiveRequest(privateSnapshot, token: privateToken)
         } else {
             request = URLRequest(url: offer.url, cachePolicy: .reloadIgnoringLocalCacheData)

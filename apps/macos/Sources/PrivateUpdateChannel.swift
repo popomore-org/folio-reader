@@ -46,7 +46,7 @@ struct PrivateUpdateChannel: Sendable {
         self.isPreview = isPreview
     }
 
-    func latest(token: String, using session: URLSession) async throws -> Snapshot {
+    func latest(token: String?, using session: URLSession) async throws -> Snapshot {
         let (release, archiveName) = if isPreview {
             try await latestPreview(token: token, using: session)
         } else {
@@ -56,22 +56,23 @@ struct PrivateUpdateChannel: Sendable {
               let archive = assetURL(archiveName, in: release) else {
             throw UpdateFailure("The GitHub release is missing the Folio update files.")
         }
-        let (file, appcastResponse) = try await session.download(for: request(appcast, token: token, binary: true))
+        let downloads = releasesURL.appendingPathComponent("download").appendingPathComponent(release.tagName)
+        let feedURL = token == nil ? downloads.appendingPathComponent("appcast.xml") : appcast
+        let (file, appcastResponse) = try await session.download(for: request(feedURL, token: token, binary: true))
         defer { try? FileManager.default.removeItem(at: file) }
-        try validate(appcastResponse)
+        try validate(appcastResponse, authenticated: token != nil)
         let length = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard (1...1_048_576).contains(length) else {
             throw UpdateFailure("The update feed has an invalid size.")
         }
-        let browserURL = releasesURL.appendingPathComponent("download")
-            .appendingPathComponent(release.tagName).appendingPathComponent(archiveName)
+        let browserURL = downloads.appendingPathComponent(archiveName)
         let local = try await LocalUpdateFeed.start(appcast: Data(contentsOf: file))
         return Snapshot(feed: local, archiveURL: browserURL, archiveAPI: archive)
     }
 
-    private func latestStable(token: String, using session: URLSession) async throws -> (Release, String) {
+    private func latestStable(token: String?, using session: URLSession) async throws -> (Release, String) {
         let (data, response) = try await session.data(for: request(api.appendingPathComponent("latest"), token: token, binary: false))
-        try validate(response)
+        try validate(response, authenticated: token != nil)
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let release = try decoder.decode(Release.self, from: data)
@@ -93,7 +94,7 @@ struct PrivateUpdateChannel: Sendable {
         return ("\(base)-\(timestamp).g\(sha)", (timestamp, sha))
     }
 
-    private func latestPreview(token: String, using session: URLSession) async throws -> (Release, String) {
+    private func latestPreview(token: String?, using session: URLSession) async throws -> (Release, String) {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let pageSize = 100
@@ -105,7 +106,7 @@ struct PrivateUpdateChannel: Sendable {
                 URLQueryItem(name: "page", value: String(page)),
             ])
             let (data, response) = try await session.data(for: request(url, token: token, binary: false))
-            try validate(response)
+            try validate(response, authenticated: token != nil)
             let releases = try decoder.decode([Release].self, from: data)
             for release in releases where !release.draft && release.prerelease && release.immutable {
                 guard let build = Self.previewVersion(release.tagName) else { continue }
@@ -121,8 +122,8 @@ struct PrivateUpdateChannel: Sendable {
         return (latest.release, latest.archiveName)
     }
 
-    func archiveRequest(_ release: Snapshot, token: String) -> URLRequest {
-        request(release.archiveAPI, token: token, binary: true)
+    func archiveRequest(_ release: Snapshot, token: String?) -> URLRequest {
+        request(token == nil ? release.archiveURL : release.archiveAPI, token: token, binary: true)
     }
 
     private func assetURL(_ name: String, in release: Release) -> URL? {
@@ -131,20 +132,20 @@ struct PrivateUpdateChannel: Sendable {
         return api.appendingPathComponent("assets").appendingPathComponent(String(id))
     }
 
-    private func request(_ url: URL, token: String, binary: Bool) -> URLRequest {
+    private func request(_ url: URL, token: String?, binary: Bool) -> URLRequest {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         request.setValue(binary ? "application/octet-stream" : "application/vnd.github+json", forHTTPHeaderField: "Accept")
         return request
     }
 
-    private func validate(_ response: URLResponse) throws {
+    private func validate(_ response: URLResponse, authenticated: Bool) throws {
         guard let response = response as? HTTPURLResponse, response.url?.scheme == "https" else {
             throw UpdateFailure("GitHub didn’t return a secure response.")
         }
         switch response.statusCode {
         case 200: return
-        case 401, 403, 404:
+        case 401 where authenticated, 403 where authenticated, 404 where authenticated:
             throw UpdateFailure("Can’t read the private GitHub release. Check the token and repository access in Settings.")
         default:
             throw UpdateFailure("GitHub couldn’t load the update (HTTP \(response.statusCode)).")

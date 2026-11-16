@@ -94,9 +94,8 @@ if mode != "preview":
                 SUVerifyUpdateBeforeExtraction=True, SURequireSignedFeed=True)
 if mode != "preview":
     info["NSAppTransportSecurity"] = {"NSAllowsLocalNetworking": True}
-if mode in ("release", "preview-release"):
-    info["FolioPrivateUpdates"] = True
 if mode == "preview-release":
+    info["FolioPublicPreviewUpdates"] = True
     info["FolioPreviewVersion"] = version + "-" + os.environ["FOLIO_PREVIEW_SUFFIX"].replace("-", ".g")
 with open(path, "wb") as file:
     plistlib.dump(info, file)
