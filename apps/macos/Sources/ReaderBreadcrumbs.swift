@@ -84,24 +84,7 @@ struct ReaderBreadcrumbs: View {
 
     private var fileActions: some View {
         HStack(spacing: 6) {
-            Picker("Document Mode", selection: Binding(get: { tab.mode }, set: { mode in
-                focusPane()
-                tab.setMode(mode)
-            })) {
-                Label("Reading", systemImage: "doc")
-                    .labelStyle(.iconOnly)
-                    .tag(ReaderMode.reading)
-                Label("Source", systemImage: "chevron.left.forwardslash.chevron.right")
-                    .labelStyle(.iconOnly)
-                    .tag(ReaderMode.source)
-                Label("Source and Preview", systemImage: "rectangle.split.2x1")
-                    .labelStyle(.iconOnly)
-                    .tag(ReaderMode.split)
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .disabled(!tab.canEdit)
-            .help(tab.canEdit ? "Reading, Source, or Source and Preview" : "This file is read-only in Folio")
+            modeSwitch
 
             if let file = location.url {
                 OpenWithMenu(file: file, model: model, showsIcon: true)
@@ -111,6 +94,37 @@ struct ReaderBreadcrumbs: View {
             }
         }
         .controlSize(.small)
+    }
+
+    private var modeSwitch: some View {
+        // Updating the native segmented picker can trigger an AppKit accessibility crash.
+        HStack(spacing: 1) {
+            modeButton(.reading, title: "Reading", icon: "doc")
+            modeButton(.source, title: "Source", icon: "chevron.left.forwardslash.chevron.right")
+            modeButton(.split, title: "Source and Preview", icon: "rectangle.split.2x1")
+        }
+        .padding(2)
+        .background(WorkspaceStyle.line.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Document Mode")
+        .disabled(!tab.canEdit)
+    }
+
+    private func modeButton(_ mode: ReaderMode, title: LocalizedStringKey, icon: String) -> some View {
+        let selected = tab.mode == mode
+        return Button {
+            focusPane()
+            tab.setMode(mode)
+        } label: {
+            Image(systemName: icon)
+                .foregroundStyle(selected ? WorkspaceStyle.focus : WorkspaceStyle.secondaryText)
+                .frame(width: 25, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(WorkspaceButton(selected: selected))
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .help(tab.canEdit ? Text(title) : Text("This file is read-only in Folio"))
     }
 
     private func button(_ segment: Segment) -> some View {
