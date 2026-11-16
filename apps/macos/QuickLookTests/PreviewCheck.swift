@@ -71,7 +71,21 @@ struct PreviewCheck {
         var numberedLines = (1...101).map { "let value_\($0) = \($0);" }
         numberedLines[11] = "let long = \"" + String(repeating: "x", count: 180) + "\";"
         let numberedPage = try html("LineNumbers.rs", numberedLines.joined(separator: "\n"), root: root, resources: resources)
-        try await LineNumberLayoutCheck.verify(numberedPage)
+        try await PreviewLayoutCheck.verifyLineNumbers(numberedPage)
+        let wideCell = String(repeating: "x", count: 190)
+        let tables = """
+            # Table sizing
+
+            | Key | Value |
+            | --- | --- |
+            | A | 42 |
+
+            | Key | Value |
+            | --- | --- |
+            | A | `\(wideCell)` |
+            """
+        let tablePage = try html("Tables.md", tables, root: root, resources: resources)
+        try await PreviewLayoutCheck.verifyTableWidths(tablePage)
         let editorSpans = try Core.sourceHighlights(for: "example.swift", source: "let face = \"😀\"; let count = 42")
         try require(editorSpans.contains { $0.token == .constant && $0.start == 29 && $0.end == 31 },
                     "The native editor should receive color ranges in UTF-16 coordinates.")
@@ -131,43 +145,69 @@ struct PreviewCheck {
 }
 
 @MainActor
-private final class LineNumberLayoutCheck: NSObject, WKNavigationDelegate {
+private final class PreviewLayoutCheck: NSObject, WKNavigationDelegate {
     private var loading: CheckedContinuation<Void, any Error>?
 
-    static func verify(_ page: String) async throws {
+    static func verifyLineNumbers(_ page: String) async throws {
+        try await verify(page, width: 360, script: """
+            const markers = [...document.querySelectorAll("pre > code > .code-line-number")];
+            if (markers.length !== 101) return "Expected 101 line numbers, got " + markers.length;
+            const digitWidth = parseFloat(getComputedStyle(markers[0], "::before").width);
+            for (const index of [0, 9, 99]) {
+                const style = getComputedStyle(markers[index], "::before");
+                const expectedWidth = digitWidth * String(index + 1).length;
+                if (!(Math.abs(parseFloat(style.height) - parseFloat(style.lineHeight)) <= 0.5
+                      && Math.abs(parseFloat(style.width) - expectedWidth) <= 0.5)) {
+                    return "Line number " + (index + 1) + " wrapped (box height " + style.height
+                        + ", line height " + style.lineHeight + ").";
+                }
+            }
+            const top = (index) => markers[index].getBoundingClientRect().top;
+            if (!(top(12) - top(11) > (top(1) - top(0)) * 1.5)) {
+                return "The long source line should still wrap in a narrow preview.";
+            }
+            return "";
+            """)
+    }
+
+    static func verifyTableWidths(_ page: String) async throws {
+        for width: CGFloat in [1280, 360] {
+            try await verify(page, width: width, script: """
+                document.documentElement.style.setProperty("--reading-width", "920px");
+                const prose = document.querySelector("article").getBoundingClientRect();
+                const [small, wide] = document.querySelectorAll("article > table");
+                const table = wide.getBoundingClientRect();
+                const close = (a, b) => Math.abs(a - b) < 1;
+                if (!close(small.getBoundingClientRect().left, prose.left)) return "Small table moved off the prose edge.";
+                if (window.innerWidth > 1000) {
+                    if (!close(prose.width, 920) || !close(table.width, 1120)) return "Wide table did not use the extra space.";
+                    if (!close(table.left + table.right, prose.left + prose.right)) return "Wide table is off center.";
+                } else if (!close(table.width, prose.width) || !close(table.left, prose.left)) {
+                    return "Table does not fit the narrow pane.";
+                }
+                if (wide.scrollWidth <= wide.clientWidth) return "Long cells should scroll inside the table.";
+                if (document.documentElement.scrollWidth > document.documentElement.clientWidth) return "The whole preview scrolls sideways.";
+                const root = getComputedStyle(document.documentElement);
+                if (root.backgroundColor === "rgba(0, 0, 0, 0)") return "The reading canvas is transparent.";
+                return "";
+                """)
+        }
+    }
+
+    private static func verify(_ page: String, width: CGFloat, script: String) async throws {
         _ = NSApplication.shared
-        let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 360, height: 400))
-        let navigation = LineNumberLayoutCheck()
+        let web = WKWebView(frame: CGRect(x: 0, y: 0, width: width, height: 400))
+        let navigation = PreviewLayoutCheck()
         web.navigationDelegate = navigation
         try await withCheckedThrowingContinuation { continuation in
             navigation.loading = continuation
             if web.loadHTMLString(page, baseURL: nil) == nil {
-                navigation.finish(CoreError(message: "Could not load line numbers in WebKit."))
+                navigation.finish(CoreError(message: "Could not load the preview in WebKit."))
             }
         }
-        let result = try await web.evaluateJavaScript("""
-            (() => {
-                const markers = [...document.querySelectorAll("pre > code > .code-line-number")];
-                if (markers.length !== 101) return "Expected 101 line numbers, got " + markers.length;
-                const digitWidth = parseFloat(getComputedStyle(markers[0], "::before").width);
-                for (const index of [0, 9, 99]) {
-                    const style = getComputedStyle(markers[index], "::before");
-                    const expectedWidth = digitWidth * String(index + 1).length;
-                    if (!(Math.abs(parseFloat(style.height) - parseFloat(style.lineHeight)) <= 0.5
-                          && Math.abs(parseFloat(style.width) - expectedWidth) <= 0.5)) {
-                        return "Line number " + (index + 1) + " wrapped (box height " + style.height
-                            + ", line height " + style.lineHeight + ").";
-                    }
-                }
-                const top = (index) => markers[index].getBoundingClientRect().top;
-                if (!(top(12) - top(11) > (top(1) - top(0)) * 1.5)) {
-                    return "The long source line should still wrap in a narrow preview.";
-                }
-                return "";
-            })()
-            """)
+        let result = try await web.callAsyncJavaScript(script, contentWorld: .page)
         guard let failure = result as? String, failure.isEmpty else {
-            throw CoreError(message: (result as? String) ?? "Could not measure line number layout.")
+            throw CoreError(message: (result as? String) ?? "Could not measure preview layout.")
         }
     }
 
@@ -182,7 +222,7 @@ private final class LineNumberLayoutCheck: NSObject, WKNavigationDelegate {
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        finish(CoreError(message: "The line number preview renderer exited."))
+        finish(CoreError(message: "The preview renderer exited."))
     }
 
     private func finish(_ error: (any Error)?) {

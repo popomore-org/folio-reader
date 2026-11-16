@@ -44,8 +44,8 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-padding: 24px; }
-body { margin: 0; background: var(--paper); color: var(--ink); }
+html { scroll-padding: 24px; background: var(--paper); }
+body { margin: 0; color: var(--ink); }
 article {
   width: min(calc(100% - 2 * var(--reader-gutter)), var(--reading-width));
   margin-inline: auto;
@@ -129,6 +129,15 @@ table {
   overflow: auto;
   border-collapse: collapse;
   font-variant-numeric: tabular-nums;
+}
+body:has(> article > table) { container-type: inline-size; }
+article > table {
+  --table-limit: min(calc(100cqw - 2 * var(--reader-gutter)), max(1120px, var(--reading-width)));
+  --table-overhang: max(0px, calc((var(--table-limit) - var(--reading-width)) / 2));
+  max-width: var(--table-limit);
+  /* Center tables wider than the prose and keep smaller tables on its left edge. */
+  margin-left: calc(-1 * var(--table-overhang));
+  transform: translateX(min(var(--table-overhang), calc(var(--table-limit) / 2 - 50%)));
 }
 td, th { padding: 6px 13px; border: 1px solid var(--line-muted); }
 th { font-weight: 600; }
